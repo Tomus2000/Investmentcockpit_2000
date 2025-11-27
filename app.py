@@ -39,12 +39,23 @@ from supabase import create_client, Client
 # Helper function to get secrets from either Streamlit secrets or environment variables
 def get_secret(key: str, default: str = "") -> str:
     """Get secret from Streamlit secrets (cloud) or environment variables (local)"""
+    # Try Streamlit secrets first (for Streamlit Cloud deployment)
     try:
-        if hasattr(st, 'secrets') and key in st.secrets:
-            return st.secrets[key]
-    except:
+        if hasattr(st, 'secrets'):
+            # Check if secrets object exists and has the key
+            secrets = st.secrets
+            if secrets and hasattr(secrets, '__contains__'):
+                if key in secrets:
+                    value = secrets[key]
+                    if value:  # Only return if not empty
+                        return str(value)
+    except Exception as e:
+        # Silently fail and try environment variables
         pass
-    return os.getenv(key, default)
+    
+    # Fallback to environment variables (for local development)
+    value = os.getenv(key, default)
+    return value if value else default
 
 # API Keys - supports both Streamlit secrets and .env file
 FINNHUB_API_KEY = get_secret("FINNHUB_API_KEY", "")
@@ -60,16 +71,26 @@ SUPABASE_KEY = get_secret("SUPABASE_KEY", "")
 @st.cache_resource
 def get_supabase_client() -> Client:
     """Create and cache Supabase client"""
-    if not SUPABASE_URL or not SUPABASE_KEY:
-        st.error("⚠️ Supabase credentials not configured. Please set SUPABASE_URL and SUPABASE_KEY in your .env file.")
+    # Read secrets inside the function to ensure they're available
+    supabase_url = get_secret("SUPABASE_URL", "")
+    supabase_key = get_secret("SUPABASE_KEY", "")
+    
+    if not supabase_url or not supabase_key:
+        # Check if we're on Streamlit Cloud or local
+        is_cloud = hasattr(st, 'secrets') and st.secrets
+        if is_cloud:
+            st.error("⚠️ Supabase credentials not found in Streamlit secrets. Please add SUPABASE_URL and SUPABASE_KEY in your app's Settings → Secrets.")
+        else:
+            st.error("⚠️ Supabase credentials not found. Please set SUPABASE_URL and SUPABASE_KEY in your .env file.")
         return None
     try:
-        return create_client(SUPABASE_URL, SUPABASE_KEY)
+        return create_client(supabase_url, supabase_key)
     except Exception as e:
         st.error(f"⚠️ Failed to initialize Supabase client: {e}")
         return None
 
-supabase = get_supabase_client()
+# Initialize Supabase client (will be created on first use)
+supabase = None
 
 # -------------------------------------------------------
 # Supabase Helper Functions
@@ -82,10 +103,12 @@ def get_portfolio_hash(positions: list) -> str:
 
 def load_portfolio_from_supabase() -> list:
     """Load portfolio positions from Supabase"""
-    if not supabase:
+    # Get Supabase client (will read secrets if needed)
+    supabase_client = get_supabase_client()
+    if not supabase_client:
         return []
     try:
-        response = supabase.table('portfolio_positions').select('*').execute()
+        response = supabase_client.table('portfolio_positions').select('*').execute()
         if response.data:
             return [{"Ticker": row['ticker'], "Buy Price": float(row['buy_price']), "Quantity": float(row['quantity'])} 
                     for row in response.data]
@@ -95,27 +118,29 @@ def load_portfolio_from_supabase() -> list:
 
 def save_portfolio_to_supabase(positions: list):
     """Save portfolio positions to Supabase"""
-    if not supabase:
+    supabase_client = get_supabase_client()
+    if not supabase_client:
         st.sidebar.warning("Supabase client not initialized. Cannot save portfolio.")
         return
     try:
         # Delete all existing positions
-        supabase.table('portfolio_positions').delete().execute()
+        supabase_client.table('portfolio_positions').delete().execute()
         
         # Insert new positions
         if positions:
             rows = [{"ticker": p['Ticker'], "buy_price": float(p['Buy Price']), "quantity": float(p['Quantity'])} 
                     for p in positions]
-            supabase.table('portfolio_positions').insert(rows).execute()
+            supabase_client.table('portfolio_positions').insert(rows).execute()
     except Exception as e:
         st.sidebar.warning(f"Could not save portfolio to Supabase: {e}")
 
 def get_cached_recommendation(rec_type: str, portfolio_hash: str) -> str | None:
     """Get cached AI recommendation from Supabase"""
-    if not supabase:
+    supabase_client = get_supabase_client()
+    if not supabase_client:
         return None
     try:
-        response = supabase.table('ai_recommendations').select('*').eq('rec_type', rec_type).eq('portfolio_hash', portfolio_hash).order('created_at', desc=True).limit(1).execute()
+        response = supabase_client.table('ai_recommendations').select('*').eq('rec_type', rec_type).eq('portfolio_hash', portfolio_hash).order('created_at', desc=True).limit(1).execute()
         if response.data:
             return response.data[0]['content']
     except Exception as e:
@@ -125,14 +150,15 @@ def get_cached_recommendation(rec_type: str, portfolio_hash: str) -> str | None:
 
 def save_recommendation_to_supabase(rec_type: str, portfolio_hash: str, content: str):
     """Save AI recommendation to Supabase"""
-    if not supabase:
+    supabase_client = get_supabase_client()
+    if not supabase_client:
         return
     try:
         # Delete old recommendations of this type
-        supabase.table('ai_recommendations').delete().eq('rec_type', rec_type).execute()
+        supabase_client.table('ai_recommendations').delete().eq('rec_type', rec_type).execute()
         
         # Insert new recommendation
-        supabase.table('ai_recommendations').insert({
+        supabase_client.table('ai_recommendations').insert({
             "rec_type": rec_type,
             "portfolio_hash": portfolio_hash,
             "content": content,

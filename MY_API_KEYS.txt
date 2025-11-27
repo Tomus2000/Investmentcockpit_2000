@@ -1,0 +1,44 @@
+===========================================
+YOUR API KEYS - FOUND IN CODEBASE
+===========================================
+
+I found these API keys in your project. Some are complete, some are partial.
+You may have the complete versions saved elsewhere on your OneDrive.
+
+COMPLETE KEYS FOUND:
+--------------------
+
+
+PARTIAL KEYS FOUND (need full versions):
+----------------------------------------
+
+
+===========================================
+WHERE TO FIND YOUR KEYS:
+===========================================
+
+1. Check your OneDrive for:
+   - Notes files (.txt, .md)
+   - Password manager exports
+   - Email confirmations from API providers
+   - Browser saved passwords
+
+2. Check these locations:
+   - OneDrive/Documents/ (other folders)
+   - Desktop notes
+   - Email inbox (search for "API key" or service names)
+
+3. Get fresh keys from:
+   - OpenAI: https://platform.openai.com/api-keys
+   - Supabase: Dashboard → Settings → API
+   - Telegram: @BotFather (for bot token)
+   - Finnhub: https://finnhub.io/ dashboard
+
+===========================================
+NEXT STEPS:
+===========================================
+
+1. Create a .env file in your project root with all keys
+2. Or check if you have them saved in another document
+3. The .env file is already in .gitignore (won't be committed)
+
