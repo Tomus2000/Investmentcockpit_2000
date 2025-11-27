@@ -42,20 +42,45 @@ def get_secret(key: str, default: str = "") -> str:
     # Try Streamlit secrets first (for Streamlit Cloud deployment)
     try:
         if hasattr(st, 'secrets'):
-            # Check if secrets object exists and has the key
             secrets = st.secrets
-            if secrets and hasattr(secrets, '__contains__'):
-                if key in secrets:
-                    value = secrets[key]
-                    if value:  # Only return if not empty
-                        return str(value)
-    except Exception as e:
+            # Try different ways to access secrets
+            if secrets:
+                # Method 1: Direct access
+                try:
+                    if hasattr(secrets, key):
+                        value = getattr(secrets, key)
+                        if value:
+                            return str(value).strip()
+                except:
+                    pass
+                
+                # Method 2: Dictionary-like access
+                try:
+                    if hasattr(secrets, '__contains__') and key in secrets:
+                        value = secrets[key]
+                        if value:
+                            return str(value).strip()
+                except:
+                    pass
+                
+                # Method 3: Try getattr with different casing
+                try:
+                    for attr in dir(secrets):
+                        if attr.upper() == key.upper():
+                            value = getattr(secrets, attr)
+                            if value:
+                                return str(value).strip()
+                except:
+                    pass
+    except Exception:
         # Silently fail and try environment variables
         pass
     
     # Fallback to environment variables (for local development)
     value = os.getenv(key, default)
-    return value if value else default
+    if value:
+        return str(value).strip()
+    return default
 
 # API Keys - supports both Streamlit secrets and .env file
 FINNHUB_API_KEY = get_secret("FINNHUB_API_KEY", "")
@@ -75,6 +100,12 @@ def get_supabase_client() -> Client:
     supabase_url = get_secret("SUPABASE_URL", "")
     supabase_key = get_secret("SUPABASE_KEY", "")
     
+    # Strip whitespace and quotes from keys (common issue)
+    if supabase_url:
+        supabase_url = supabase_url.strip().strip('"').strip("'")
+    if supabase_key:
+        supabase_key = supabase_key.strip().strip('"').strip("'")
+    
     if not supabase_url or not supabase_key:
         # Check if we're on Streamlit Cloud or local
         is_cloud = hasattr(st, 'secrets') and st.secrets
@@ -83,10 +114,54 @@ def get_supabase_client() -> Client:
         else:
             st.error("⚠️ Supabase credentials not found. Please set SUPABASE_URL and SUPABASE_KEY in your .env file.")
         return None
+    
+    # Validate URL format
+    if not supabase_url.startswith("https://") or ".supabase.co" not in supabase_url:
+        st.error(f"⚠️ Invalid Supabase URL format. Should be: https://your-project.supabase.co")
+        st.info(f"Current URL: {supabase_url[:50]}..." if len(supabase_url) > 50 else f"Current URL: {supabase_url}")
+        return None
+    
+    # Validate key format (JWT tokens start with eyJ)
+    if not supabase_key.startswith("eyJ"):
+        st.warning("⚠️ Supabase key doesn't look like a valid JWT token. Make sure you're using the 'anon' public key, not the service_role key.")
+        st.info("💡 Get your key from: Supabase Dashboard → Settings → API → anon public key")
+    
     try:
-        return create_client(supabase_url, supabase_key)
+        client = create_client(supabase_url, supabase_key)
+        # Test the connection with a simple query
+        try:
+            # Try a simple query to verify the key works
+            test_response = client.table('portfolio_positions').select('id').limit(1).execute()
+            # If we get here, the key is valid
+            return client
+        except Exception as auth_error:
+            error_msg = str(auth_error)
+            if "401" in error_msg or "Invalid API key" in error_msg or "Unauthorized" in error_msg:
+                st.error("🔒 **Supabase Authentication Failed**")
+                st.error("The Supabase API key is invalid or incorrect.")
+                st.markdown("""
+                **Please check:**
+                1. ✅ You're using the **anon public key** (not service_role key)
+                2. ✅ The key is copied completely (no missing characters)
+                3. ✅ No extra spaces or quotes around the key
+                4. ✅ The key hasn't been rotated/regenerated
+                
+                **Where to find it:**
+                - Go to your Supabase Dashboard
+                - Settings → API
+                - Copy the **anon public** key (not service_role)
+                """)
+                return None
+            else:
+                # Other error, might be table doesn't exist yet (that's okay)
+                return client
     except Exception as e:
-        st.error(f"⚠️ Failed to initialize Supabase client: {e}")
+        error_msg = str(e)
+        if "401" in error_msg or "Invalid API key" in error_msg:
+            st.error("🔒 **Supabase Authentication Failed**")
+            st.error("Invalid API key. Please verify your SUPABASE_KEY in Streamlit secrets or .env file.")
+        else:
+            st.error(f"⚠️ Failed to initialize Supabase client: {e}")
         return None
 
 # Initialize Supabase client (will be created on first use)
@@ -113,14 +188,17 @@ def load_portfolio_from_supabase() -> list:
             return [{"Ticker": row['ticker'], "Buy Price": float(row['buy_price']), "Quantity": float(row['quantity'])} 
                     for row in response.data]
     except Exception as e:
-        st.sidebar.warning(f"Could not load portfolio from Supabase: {e}")
+        error_msg = str(e)
+        # Don't show error if it's just authentication (already shown in get_supabase_client)
+        if "401" not in error_msg and "Invalid API key" not in error_msg and "Unauthorized" not in error_msg:
+            st.sidebar.warning(f"Could not load portfolio from Supabase: {e}")
     return []
 
 def save_portfolio_to_supabase(positions: list):
     """Save portfolio positions to Supabase"""
     supabase_client = get_supabase_client()
     if not supabase_client:
-        st.sidebar.warning("Supabase client not initialized. Cannot save portfolio.")
+        # Error already shown in get_supabase_client
         return
     try:
         # Delete all existing positions
@@ -132,7 +210,10 @@ def save_portfolio_to_supabase(positions: list):
                     for p in positions]
             supabase_client.table('portfolio_positions').insert(rows).execute()
     except Exception as e:
-        st.sidebar.warning(f"Could not save portfolio to Supabase: {e}")
+        error_msg = str(e)
+        # Don't show error if it's just authentication (already shown in get_supabase_client)
+        if "401" not in error_msg and "Invalid API key" not in error_msg and "Unauthorized" not in error_msg:
+            st.sidebar.warning(f"Could not save portfolio to Supabase: {e}")
 
 def get_cached_recommendation(rec_type: str, portfolio_hash: str) -> str | None:
     """Get cached AI recommendation from Supabase"""
