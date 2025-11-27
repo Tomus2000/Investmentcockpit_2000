@@ -10,15 +10,14 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-# API Keys from environment variables
-FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY", "")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+# API Keys from environment variables (using get_secret after streamlit import)
+# Will be set after streamlit import
+FINNHUB_API_KEY = ""
+OPENAI_API_KEY = ""
+SUPABASE_URL = ""
+SUPABASE_KEY = ""
 
-# Supabase Configuration from environment variables
-SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
-
-# Validate required environment variables
+# Validate required environment variables (after secrets are loaded)
 if not FINNHUB_API_KEY:
     print("Warning: FINNHUB_API_KEY not found in environment variables")
 if not OPENAI_API_KEY:
@@ -35,6 +34,25 @@ import numpy as np
 import streamlit as st
 from datetime import datetime, timedelta
 from supabase import create_client, Client
+
+# Now that streamlit is imported, we can use get_secret
+# Helper function to get secrets from either Streamlit secrets or environment variables
+def get_secret(key: str, default: str = "") -> str:
+    """Get secret from Streamlit secrets (cloud) or environment variables (local)"""
+    try:
+        if hasattr(st, 'secrets') and key in st.secrets:
+            return st.secrets[key]
+    except:
+        pass
+    return os.getenv(key, default)
+
+# API Keys - supports both Streamlit secrets and .env file
+FINNHUB_API_KEY = get_secret("FINNHUB_API_KEY", "")
+OPENAI_API_KEY = get_secret("OPENAI_API_KEY", "")
+
+# Supabase Configuration - supports both Streamlit secrets and .env file
+SUPABASE_URL = get_secret("SUPABASE_URL", "")
+SUPABASE_KEY = get_secret("SUPABASE_KEY", "")
 
 # -------------------------------------------------------
 # Supabase Client Setup
@@ -126,6 +144,43 @@ def save_recommendation_to_supabase(rec_type: str, portfolio_hash: str, content:
 
 st.set_page_config(layout="wide")
 
+# -------------------------------------------------------
+# Password Protection
+# -------------------------------------------------------
+# Get password from environment/secrets
+APP_PASSWORD = get_secret("APP_PASSWORD", "")
+
+# Initialize session state for authentication
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+# If no password is set, allow access (for development)
+if not APP_PASSWORD:
+    st.session_state.authenticated = True
+    st.warning("⚠️ No password set. Set APP_PASSWORD in .env or Streamlit secrets for production.")
+
+# Password protection
+if not st.session_state.authenticated:
+    st.title("🔒 Investment Cockpit - Access Required")
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown("### Please enter the password to continue")
+        password_input = st.text_input("Password", type="password", key="password_input")
+        
+        if st.button("Login", type="primary", use_container_width=True):
+            if password_input == APP_PASSWORD:
+                st.session_state.authenticated = True
+                st.rerun()
+            else:
+                st.error("❌ Incorrect password. Please try again.")
+        
+        st.markdown("---")
+        st.caption("💡 Contact the administrator if you need access")
+    
+    st.stop()  # Stop execution if not authenticated
+
+# Main app content (only shown if authenticated)
 st.title("📊 Investment Cockpit")
 st.markdown("Portfolio Analysis, Strategy Builder & Stock Screener. Designed by Tom")
 

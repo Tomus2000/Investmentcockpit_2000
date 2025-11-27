@@ -9,6 +9,9 @@ This project uses environment variables to securely store API keys and configura
 2. **Add the following variables** to your `.env` file:
 
 ```env
+# App Password Protection (REQUIRED for production deployment)
+APP_PASSWORD=your_secure_password_here
+
 # OpenAI API Key
 OPENAI_API_KEY=your_openai_api_key_here
 

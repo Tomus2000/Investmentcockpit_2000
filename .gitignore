@@ -37,6 +37,7 @@ wheels/
 config.py
 secrets.toml
 .env
+MY_API_KEYS.txt
 
 # Logs
 *.log
