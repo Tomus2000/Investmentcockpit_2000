@@ -1,0 +1,62 @@
+===========================================
+YOUR API KEYS - FOUND IN CODEBASE
+===========================================
+
+I found these API keys in your project. Some are complete, some are partial.
+You may have the complete versions saved elsewhere on your OneDrive.
+
+COMPLETE KEYS FOUND:
+--------------------
+
+1. FINNHUB_API_KEY
+   d0hiea9r01qup0c6eeugd0hiea9r01qup0c6eev0
+
+2. SUPABASE_URL
+   https://uniuqxphvoxhmowkrret.supabase.co
+
+3. TELEGRAM_BOT_TOKEN
+   8419734592:AAHkiVOYrTSDuvW0POpEmE0s7bmhefxz6xE
+
+4. TELEGRAM_USER_ID
+   8052172643
+
+PARTIAL KEYS FOUND (need full versions):
+----------------------------------------
+
+5. OPENAI_API_KEY
+   Starts with: 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
+   (This appears to be the full key - it's very long)
+
+6. SUPABASE_KEY
+   Starts with: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+   (Full JWT token - check Supabase dashboard for complete key)
+
+===========================================
+WHERE TO FIND YOUR KEYS:
+===========================================
+
+1. Check your OneDrive for:
+   - Notes files (.txt, .md)
+   - Password manager exports
+   - Email confirmations from API providers
+   - Browser saved passwords
+
+2. Check these locations:
+   - OneDrive/Documents/ (other folders)
+   - Desktop notes
+   - Email inbox (search for "API key" or service names)
+
+3. Get fresh keys from:
+   - OpenAI: https://platform.openai.com/api-keys
+   - Supabase: Dashboard → Settings → API
+   - Telegram: @BotFather (for bot token)
+   - Finnhub: https://finnhub.io/ dashboard
+
+===========================================
+NEXT STEPS:
+===========================================
+
+1. Create a .env file in your project root with all keys
+2. Or check if you have them saved in another document
+3. The .env file is already in .gitignore (won't be committed)
+
