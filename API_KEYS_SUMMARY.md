@@ -69,18 +69,18 @@ Create a `.env` file in the root directory with:
 
 ```env
 # OpenAI API Key (Required for app.py and bot.py)
-OPENAI_API_KEY=sk-proj-...
+OPENAI_API_KEY=your_openai_api_key_here
 
 # Finnhub API Key (Required for app.py and bot.py)
-FINNHUB_API_KEY=d0hiea9r01qup0c6eeugd0hiea9r01qup0c6eev0
+FINNHUB_API_KEY=your_finnhub_api_key_here
 
 # Supabase Configuration (Required for app.py and bot.py)
-SUPABASE_URL=https://uniuqxphvoxhmowkrret.supabase.co
-SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+SUPABASE_URL=your_supabase_url_here
+SUPABASE_KEY=your_supabase_anon_key_here
 
 # Telegram Bot Configuration (Required for bot.py only)
-TELEGRAM_BOT_TOKEN=8419734592:AAHkiVOYrTSDuvW0POpEmE0s7bmhefxz6xE
-TELEGRAM_USER_ID=8052172643
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
+TELEGRAM_USER_ID=your_telegram_user_id_here
 ```
 
 ## 🔍 Usage by File
