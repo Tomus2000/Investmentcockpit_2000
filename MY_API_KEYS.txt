@@ -8,28 +8,10 @@ You may have the complete versions saved elsewhere on your OneDrive.
 COMPLETE KEYS FOUND:
 --------------------
 
-1. FINNHUB_API_KEY
-   d0hiea9r01qup0c6eeugd0hiea9r01qup0c6eev0
-
-2. SUPABASE_URL
-   https://uniuqxphvoxhmowkrret.supabase.co
-
-3. TELEGRAM_BOT_TOKEN
-   8419734592:AAHkiVOYrTSDuvW0POpEmE0s7bmhefxz6xE
-
-4. TELEGRAM_USER_ID
-   8052172643
 
 PARTIAL KEYS FOUND (need full versions):
 ----------------------------------------
 
-5. OPENAI_API_KEY
-   Starts with: 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
-   (This appears to be the full key - it's very long)
-
-6. SUPABASE_KEY
-   Starts with: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-   (Full JWT token - check Supabase dashboard for complete key)
 
 ===========================================
 WHERE TO FIND YOUR KEYS:
