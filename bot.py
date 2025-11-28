@@ -23,17 +23,25 @@ from supabase import create_client, Client
 # Load environment variables from .env file
 load_dotenv()
 
-# Configuration from environment variables
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY", "")
+# Helper function to get and clean environment variables
+def get_env_var(key: str, default: str = "") -> str:
+    """Get environment variable and strip quotes/whitespace"""
+    value = os.getenv(key, default)
+    if value:
+        return str(value).strip().strip('"').strip("'").strip()
+    return default
 
-# Supabase Configuration from environment variables
-SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
+# Configuration from environment variables (with quote stripping)
+OPENAI_API_KEY = get_env_var("OPENAI_API_KEY", "")
+TELEGRAM_BOT_TOKEN = get_env_var("TELEGRAM_BOT_TOKEN", "")
+FINNHUB_API_KEY = get_env_var("FINNHUB_API_KEY", "")
+
+# Supabase Configuration from environment variables (with quote stripping)
+SUPABASE_URL = get_env_var("SUPABASE_URL", "")
+SUPABASE_KEY = get_env_var("SUPABASE_KEY", "")
 
 # Your Telegram user ID (get this by messaging @userinfobot)
-TELEGRAM_USER_ID = os.getenv("TELEGRAM_USER_ID", "")
+TELEGRAM_USER_ID = get_env_var("TELEGRAM_USER_ID", "")
 if TELEGRAM_USER_ID:
     try:
         TELEGRAM_USER_ID = int(TELEGRAM_USER_ID)
@@ -62,14 +70,43 @@ def get_supabase_client() -> Optional[Client]:
     """Get Supabase client with proper error handling"""
     if not SUPABASE_URL or not SUPABASE_KEY:
         logging.error("Supabase credentials not configured")
+        logging.error(f"URL present: {bool(SUPABASE_URL)}, KEY present: {bool(SUPABASE_KEY)}")
         return None
     try:
-        # Strip whitespace
-        url = SUPABASE_URL.strip().strip('"').strip("'")
-        key = SUPABASE_KEY.strip().strip('"').strip("'")
-        return create_client(url, key)
+        # Additional cleaning (get_env_var already strips, but double-check)
+        url = SUPABASE_URL.strip().strip('"').strip("'").strip()
+        key = SUPABASE_KEY.strip().strip('"').strip("'").strip()
+        
+        # Validate URL format
+        if not url.startswith("https://") or ".supabase.co" not in url:
+            logging.error(f"Invalid Supabase URL format: {url[:50]}...")
+            return None
+        
+        # Validate key format (JWT tokens start with eyJ)
+        if not key.startswith("eyJ"):
+            logging.warning("Supabase key doesn't look like a valid JWT token")
+        
+        logging.info(f"Connecting to Supabase: {url[:30]}...")
+        client = create_client(url, key)
+        
+        # Test connection
+        try:
+            test_response = client.table('portfolio_positions').select('id').limit(1).execute()
+            logging.info("✅ Supabase connection successful")
+        except Exception as auth_error:
+            error_msg = str(auth_error)
+            if "401" in error_msg or "Invalid API key" in error_msg:
+                logging.error("❌ Supabase authentication failed - Invalid API key")
+                logging.error("Make sure you're using the 'anon' public key from Supabase Dashboard")
+            else:
+                # Other error might be OK (table might not exist yet)
+                logging.info("Supabase client created (connection test had minor issue)")
+        
+        return client
     except Exception as e:
         logging.error(f"Could not initialize Supabase client: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
         return None
 
 supabase: Optional[Client] = get_supabase_client()

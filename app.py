@@ -43,33 +43,38 @@ def get_secret(key: str, default: str = "") -> str:
     try:
         if hasattr(st, 'secrets'):
             secrets = st.secrets
-            # Try different ways to access secrets
             if secrets:
-                # Method 1: Direct access
+                # Method 1: Dictionary-like access using .get() (most reliable)
                 try:
-                    if hasattr(secrets, key):
-                        value = getattr(secrets, key)
+                    if hasattr(secrets, 'get'):
+                        value = secrets.get(key, None)
                         if value:
-                            return str(value).strip()
-                except:
+                            # Strip quotes and whitespace
+                            cleaned = str(value).strip().strip('"').strip("'")
+                            if cleaned:
+                                return cleaned
+                except Exception:
                     pass
                 
-                # Method 2: Dictionary-like access
+                # Method 2: Direct dictionary access
                 try:
                     if hasattr(secrets, '__contains__') and key in secrets:
                         value = secrets[key]
                         if value:
-                            return str(value).strip()
-                except:
+                            cleaned = str(value).strip().strip('"').strip("'")
+                            if cleaned:
+                                return cleaned
+                except Exception:
                     pass
                 
-                # Method 3: Try getattr with different casing
+                # Method 3: Direct attribute access
                 try:
-                    for attr in dir(secrets):
-                        if attr.upper() == key.upper():
-                            value = getattr(secrets, attr)
-                            if value:
-                                return str(value).strip()
+                    if hasattr(secrets, key):
+                        value = getattr(secrets, key)
+                        if value:
+                            cleaned = str(value).strip().strip('"').strip("'")
+                            if cleaned:
+                                return cleaned
                 except:
                     pass
     except Exception:
@@ -79,7 +84,10 @@ def get_secret(key: str, default: str = "") -> str:
     # Fallback to environment variables (for local development)
     value = os.getenv(key, default)
     if value:
-        return str(value).strip()
+        # Strip quotes and whitespace from env vars too
+        cleaned = str(value).strip().strip('"').strip("'")
+        if cleaned:
+            return cleaned
     return default
 
 # API Keys - supports both Streamlit secrets and .env file
@@ -89,6 +97,17 @@ OPENAI_API_KEY = get_secret("OPENAI_API_KEY", "")
 # Supabase Configuration - supports both Streamlit secrets and .env file
 SUPABASE_URL = get_secret("SUPABASE_URL", "")
 SUPABASE_KEY = get_secret("SUPABASE_KEY", "")
+
+# DEBUG: Show what we're reading (only in development, remove in production)
+# Uncomment these lines to debug secret reading:
+# if hasattr(st, 'secrets'):
+#     st.sidebar.write("🔍 DEBUG - Secrets check:")
+#     st.sidebar.write("URL found:", "YES" if SUPABASE_URL else "NO")
+#     st.sidebar.write("KEY found:", "YES" if SUPABASE_KEY else "NO")
+#     if SUPABASE_URL:
+#         st.sidebar.write("URL preview:", SUPABASE_URL[:40] + "...")
+#     if SUPABASE_KEY:
+#         st.sidebar.write("KEY preview:", SUPABASE_KEY[:15] + "...")
 
 # -------------------------------------------------------
 # Supabase Client Setup
@@ -100,11 +119,31 @@ def get_supabase_client() -> Client:
     supabase_url = get_secret("SUPABASE_URL", "")
     supabase_key = get_secret("SUPABASE_KEY", "")
     
-    # Strip whitespace and quotes from keys (common issue)
+    # Additional cleaning (get_secret already strips, but double-check)
     if supabase_url:
-        supabase_url = supabase_url.strip().strip('"').strip("'")
+        supabase_url = supabase_url.strip().strip('"').strip("'").strip()
     if supabase_key:
-        supabase_key = supabase_key.strip().strip('"').strip("'")
+        supabase_key = supabase_key.strip().strip('"').strip("'").strip()
+    
+    # DEBUG: Show what we're reading (for troubleshooting)
+    debug_mode = st.sidebar.checkbox("🔍 Debug Supabase Connection", value=False)
+    if debug_mode:
+        st.sidebar.write("**DEBUG INFO:**")
+        st.sidebar.write(f"URL present: {bool(supabase_url)}")
+        st.sidebar.write(f"KEY present: {bool(supabase_key)}")
+        if supabase_url:
+            st.sidebar.write(f"URL: `{supabase_url[:50]}...`")
+        if supabase_key:
+            st.sidebar.write(f"KEY prefix: `{supabase_key[:20]}...`")
+        # Try direct access to see what Streamlit has
+        try:
+            if hasattr(st, 'secrets'):
+                direct_url = st.secrets.get("SUPABASE_URL", "NOT_FOUND")
+                direct_key = st.secrets.get("SUPABASE_KEY", "NOT_FOUND")
+                st.sidebar.write(f"Direct URL: `{str(direct_url)[:50]}...`")
+                st.sidebar.write(f"Direct KEY: `{str(direct_key)[:20]}...`")
+        except:
+            st.sidebar.write("Could not access st.secrets directly")
     
     if not supabase_url or not supabase_key:
         # Check if we're on Streamlit Cloud or local
@@ -119,49 +158,84 @@ def get_supabase_client() -> Client:
     if not supabase_url.startswith("https://") or ".supabase.co" not in supabase_url:
         st.error(f"⚠️ Invalid Supabase URL format. Should be: https://your-project.supabase.co")
         st.info(f"Current URL: {supabase_url[:50]}..." if len(supabase_url) > 50 else f"Current URL: {supabase_url}")
+        if debug_mode:
+            st.sidebar.error("URL validation failed")
         return None
     
-    # Validate key format (JWT tokens start with eyJ)
-    if not supabase_key.startswith("eyJ"):
-        st.warning("⚠️ Supabase key doesn't look like a valid JWT token. Make sure you're using the 'anon' public key, not the service_role key.")
-        st.info("💡 Get your key from: Supabase Dashboard → Settings → API → anon public key")
+    # Validate key format - accept both new publishable keys (sb_publishable_) and legacy anon keys (eyJ)
+    key_valid = supabase_key.startswith("eyJ") or supabase_key.startswith("sb_publishable_")
+    if not key_valid:
+        st.warning("⚠️ Supabase key format unexpected. Expected 'eyJ...' (legacy anon) or 'sb_publishable_...' (new key)")
+        st.info("💡 Try using the **Legacy anon public key** from: Supabase Dashboard → Settings → API → Legacy anon, service_role API keys")
+        if debug_mode:
+            st.sidebar.warning(f"Key format check failed. Key starts with: {supabase_key[:10]}")
     
     try:
+        if debug_mode:
+            st.sidebar.write("🔄 Creating Supabase client...")
+        
         client = create_client(supabase_url, supabase_key)
+        
+        if debug_mode:
+            st.sidebar.write("✅ Client created, testing connection...")
+        
         # Test the connection with a simple query
         try:
             # Try a simple query to verify the key works
             test_response = client.table('portfolio_positions').select('id').limit(1).execute()
             # If we get here, the key is valid
+            if debug_mode:
+                st.sidebar.success("✅ Connection test successful!")
             return client
         except Exception as auth_error:
             error_msg = str(auth_error)
-            if "401" in error_msg or "Invalid API key" in error_msg or "Unauthorized" in error_msg:
+            if debug_mode:
+                st.sidebar.error(f"Connection test failed: {error_msg[:100]}")
+            
+            if "401" in error_msg or "Invalid API key" in error_msg or "Unauthorized" in error_msg or "invalid API key" in error_msg.lower():
                 st.error("🔒 **Supabase Authentication Failed**")
                 st.error("The Supabase API key is invalid or incorrect.")
                 st.markdown("""
-                **Please check:**
-                1. ✅ You're using the **anon public key** (not service_role key)
-                2. ✅ The key is copied completely (no missing characters)
-                3. ✅ No extra spaces or quotes around the key
-                4. ✅ The key hasn't been rotated/regenerated
+                **Troubleshooting Steps:**
                 
-                **Where to find it:**
-                - Go to your Supabase Dashboard
-                - Settings → API
-                - Copy the **anon public** key (not service_role)
+                1. **Check you're using the RIGHT key type:**
+                   - Go to Supabase Dashboard → Settings → API
+                   - Click **"Legacy anon, service_role API keys"** tab
+                   - Copy the **anon public** key (starts with `eyJ...`)
+                   - NOT the service_role key
+                   - NOT the new publishable key (unless your Supabase version requires it)
+                
+                2. **Verify in Streamlit secrets:**
+                   - Make sure variable name is exactly: `SUPABASE_KEY`
+                   - Make sure it's the anon public key
+                   - No extra spaces or quotes
+                
+                3. **Test the key:**
+                   - The key should start with `eyJ` (legacy) or `sb_publishable_` (new)
+                   - It should be very long (100+ characters)
+                
+                **Enable debug mode** (checkbox in sidebar) to see what's being read.
                 """)
                 return None
             else:
                 # Other error, might be table doesn't exist yet (that's okay)
+                if debug_mode:
+                    st.sidebar.warning(f"Connection test had issue (might be OK): {error_msg[:50]}")
                 return client
     except Exception as e:
         error_msg = str(e)
-        if "401" in error_msg or "Invalid API key" in error_msg:
+        if debug_mode:
+            st.sidebar.error(f"Client creation failed: {error_msg}")
+        
+        if "401" in error_msg or "Invalid API key" in error_msg or "invalid API key" in error_msg.lower():
             st.error("🔒 **Supabase Authentication Failed**")
-            st.error("Invalid API key. Please verify your SUPABASE_KEY in Streamlit secrets or .env file.")
+            st.error("Invalid API key. Please verify your SUPABASE_KEY in Streamlit secrets.")
+            st.info("💡 Try using the **Legacy anon public key** from Supabase Dashboard → Settings → API")
         else:
             st.error(f"⚠️ Failed to initialize Supabase client: {e}")
+            if debug_mode:
+                import traceback
+                st.sidebar.code(traceback.format_exc())
         return None
 
 # Initialize Supabase client (will be created on first use)
@@ -250,6 +324,25 @@ def save_recommendation_to_supabase(rec_type: str, portfolio_hash: str, content:
         pass
 
 st.set_page_config(layout="wide")
+
+# -------------------------------------------------------
+# DEBUG: Show what secrets are being read (enable to troubleshoot)
+# -------------------------------------------------------
+# Uncomment the block below to see what secrets are being read:
+# with st.sidebar.expander("🔍 DEBUG - Secret Reading", expanded=False):
+#     st.write("**Direct from st.secrets:**")
+#     try:
+#         if hasattr(st, 'secrets'):
+#             direct_url = st.secrets.get("SUPABASE_URL", "MISSING")
+#             direct_key = st.secrets.get("SUPABASE_KEY", "MISSING")
+#             st.write(f"URL: `{str(direct_url)[:50]}...`" if direct_url != "MISSING" else "URL: ❌ MISSING")
+#             st.write(f"KEY: `{str(direct_key)[:20]}...`" if direct_key != "MISSING" else "KEY: ❌ MISSING")
+#     except Exception as e:
+#         st.write(f"Error reading secrets: {e}")
+#     
+#     st.write("**Via get_secret() function:**")
+#     st.write(f"URL: `{SUPABASE_URL[:50]}...`" if SUPABASE_URL else "URL: ❌ EMPTY")
+#     st.write(f"KEY: `{SUPABASE_KEY[:20]}...`" if SUPABASE_KEY else "KEY: ❌ EMPTY")
 
 # -------------------------------------------------------
 # Password Protection
