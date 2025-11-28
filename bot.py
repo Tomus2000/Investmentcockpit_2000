@@ -163,8 +163,14 @@ def load_portfolio_from_supabase() -> List[Dict]:
         # Check if it's an authentication error
         if "401" in error_msg or "Invalid API key" in error_msg or "Unauthorized" in error_msg:
             logger.error("Authentication failed - check your Supabase API key")
-        elif "relation" in error_msg.lower() or "does not exist" in error_msg.lower():
-            logger.warning("Table might not exist yet - this is OK for first run")
+        elif "PGRST205" in error_msg or "Could not find the table" in error_msg or "does not exist" in error_msg.lower():
+            logger.error("❌ CRITICAL: The 'portfolio_positions' table doesn't exist in Supabase!")
+            logger.error("📋 To fix this:")
+            logger.error("   1. Go to https://supabase.com/dashboard")
+            logger.error("   2. Select your project")
+            logger.error("   3. Click 'SQL Editor' → 'New Query'")
+            logger.error("   4. Run the SQL from 'supabase_setup.sql' file")
+            logger.error("   Or copy the CREATE TABLE statements from the error message in the Streamlit app")
         else:
             import traceback
             logger.error(traceback.format_exc())
@@ -738,8 +744,26 @@ async def schedule_daily_tasks(application: Application):
 
 def main():
     """Start the bot"""
+    # Validate required configuration
+    if not TELEGRAM_BOT_TOKEN:
+        logger.error("❌ TELEGRAM_BOT_TOKEN not found in environment variables!")
+        logger.error("Please set TELEGRAM_BOT_TOKEN in your .env file or environment variables.")
+        return
+    
+    if not TELEGRAM_USER_ID:
+        logger.warning("⚠️ TELEGRAM_USER_ID not set. Scheduled messages will not be sent.")
+        logger.info("Set TELEGRAM_USER_ID in your .env file to receive scheduled portfolio updates.")
+    
+    logger.info(f"✅ Bot token configured: {bool(TELEGRAM_BOT_TOKEN)}")
+    logger.info(f"✅ User ID configured: {bool(TELEGRAM_USER_ID)}")
+    
     # Create application
-    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    try:
+        application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    except Exception as e:
+        logger.error(f"❌ Failed to create bot application: {e}")
+        logger.error("Please check your TELEGRAM_BOT_TOKEN is valid.")
+        return
     
     # Add handlers
     application.add_handler(CommandHandler("start", start))
@@ -786,7 +810,15 @@ def main():
     
     # Run the bot (blocking)
     logger.info("🚀 Starting bot...")
-    application.run_polling()
+    try:
+        application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+    except KeyboardInterrupt:
+        logger.info("Bot stopped by user")
+    except Exception as e:
+        logger.error(f"❌ Bot crashed: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise
 
 if __name__ == '__main__':
     main()

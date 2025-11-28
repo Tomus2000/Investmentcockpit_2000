@@ -220,8 +220,53 @@ def load_portfolio_from_supabase() -> list:
                     for row in response.data]
     except Exception as e:
         error_msg = str(e)
+        # Check if table doesn't exist
+        if "PGRST205" in error_msg or "Could not find the table" in error_msg or "does not exist" in error_msg.lower():
+            st.error("📋 **Database Table Missing**")
+            st.error("The `portfolio_positions` table doesn't exist in your Supabase database yet.")
+            st.markdown("""
+            **To fix this, run the SQL setup script:**
+            
+            1. Go to your [Supabase Dashboard](https://supabase.com/dashboard)
+            2. Select your project
+            3. Click **SQL Editor** in the left sidebar
+            4. Click **New Query**
+            5. Copy and paste the contents of `supabase_setup.sql` from this project
+            6. Click **Run** (or press Ctrl+Enter)
+            
+            The script will create the required tables automatically.
+            
+            **Or** you can copy this SQL directly:
+            ```sql
+            CREATE TABLE IF NOT EXISTS portfolio_positions (
+                id BIGSERIAL PRIMARY KEY,
+                ticker TEXT NOT NULL,
+                buy_price NUMERIC NOT NULL,
+                quantity NUMERIC NOT NULL,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            );
+            
+            CREATE TABLE IF NOT EXISTS ai_recommendations (
+                id BIGSERIAL PRIMARY KEY,
+                rec_type TEXT NOT NULL,
+                portfolio_hash TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            );
+            
+            ALTER TABLE portfolio_positions ENABLE ROW LEVEL SECURITY;
+            ALTER TABLE ai_recommendations ENABLE ROW LEVEL SECURITY;
+            
+            CREATE POLICY "Allow all operations on portfolio_positions" ON portfolio_positions
+                FOR ALL USING (true) WITH CHECK (true);
+            
+            CREATE POLICY "Allow all operations on ai_recommendations" ON ai_recommendations
+                FOR ALL USING (true) WITH CHECK (true);
+            ```
+            """)
+            return []
         # Don't show error if it's just authentication (already shown in get_supabase_client)
-        if "401" not in error_msg and "Invalid API key" not in error_msg and "Unauthorized" not in error_msg:
+        elif "401" not in error_msg and "Invalid API key" not in error_msg and "Unauthorized" not in error_msg:
             st.sidebar.warning(f"Could not load portfolio from Supabase: {e}")
     return []
 
@@ -242,8 +287,14 @@ def save_portfolio_to_supabase(positions: list):
             supabase_client.table('portfolio_positions').insert(rows).execute()
     except Exception as e:
         error_msg = str(e)
+        # Check if table doesn't exist
+        if "PGRST205" in error_msg or "Could not find the table" in error_msg or "does not exist" in error_msg.lower():
+            st.error("📋 **Database Table Missing**")
+            st.error("The `portfolio_positions` table doesn't exist. Please run the SQL setup script in Supabase.")
+            st.info("💡 See the error message above for instructions on how to create the table.")
+            return
         # Don't show error if it's just authentication (already shown in get_supabase_client)
-        if "401" not in error_msg and "Invalid API key" not in error_msg and "Unauthorized" not in error_msg:
+        elif "401" not in error_msg and "Invalid API key" not in error_msg and "Unauthorized" not in error_msg:
             st.sidebar.warning(f"Could not save portfolio to Supabase: {e}")
 
 def get_cached_recommendation(rec_type: str, portfolio_hash: str) -> str | None:
@@ -581,200 +632,204 @@ def fetch_current_prices(tickers: list) -> pd.Series:
         prices[t] = p if p is not None else np.nan
     return pd.Series(prices, name="Current Price")
 
-# === Portfolio Overview (main area top)  
-if not portfolio_input.empty:
-    st.header("📦 Portfolio Overview")
-    current_px = fetch_current_prices(portfolio_input["Ticker"].unique().tolist())
-    port = portfolio_input.merge(current_px.rename_axis("Ticker").reset_index(), on="Ticker", how="left")
-    port["Cost Basis"] = port["Buy Price"] * port["Quantity"]
-    port["Market Value"] = port["Current Price"] * port["Quantity"]
-    port["P/L"] = port["Market Value"] - port["Cost Basis"]
-    port["P/L %"] = np.where(port["Cost Basis"]>0, port["P/L"]/port["Cost Basis"]*100, np.nan)
+# -------------------------------------------------------
+# Tab 1: Portfolio Analysis
+# -------------------------------------------------------
+with tab1:
+    # === Portfolio Overview (main area top)  
+    if not portfolio_input.empty:
+        st.header("📦 Portfolio Overview")
+        current_px = fetch_current_prices(portfolio_input["Ticker"].unique().tolist())
+        port = portfolio_input.merge(current_px.rename_axis("Ticker").reset_index(), on="Ticker", how="left")
+        port["Cost Basis"] = port["Buy Price"] * port["Quantity"]
+        port["Market Value"] = port["Current Price"] * port["Quantity"]
+        port["P/L"] = port["Market Value"] - port["Cost Basis"]
+        port["P/L %"] = np.where(port["Cost Basis"]>0, port["P/L"]/port["Cost Basis"]*100, np.nan)
 
-    totals = {
-        "Total Cost Basis": float(port["Cost Basis"].sum()),
-        "Total Market Value": float(port["Market Value"].sum()),
-        "Total P/L": float(port["P/L"].sum()),
-        "Total P/L %": float(
-            (port["Market Value"].sum() - port["Cost Basis"].sum())/port["Cost Basis"].sum()*100
-        ) if port["Cost Basis"].sum()>0 else np.nan
-    }
+        totals = {
+            "Total Cost Basis": float(port["Cost Basis"].sum()),
+            "Total Market Value": float(port["Market Value"].sum()),
+            "Total P/L": float(port["P/L"].sum()),
+            "Total P/L %": float(
+                (port["Market Value"].sum() - port["Cost Basis"].sum())/port["Cost Basis"].sum()*100
+            ) if port["Cost Basis"].sum()>0 else np.nan
+        }
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Total Cost Basis", f"${totals['Total Cost Basis']:,.0f}")
-    c2.metric("Total Market Value", f"${totals['Total Market Value']:,.0f}")
-    c3.metric("Total P/L", f"${totals['Total P/L']:,.0f}",
-              delta=f"{totals['Total P/L %']:.2f}%" if pd.notna(totals["Total P/L %"]) else None)
-    c4.metric("Positions", f"{len(port)}")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Total Cost Basis", f"${totals['Total Cost Basis']:,.0f}")
+        c2.metric("Total Market Value", f"${totals['Total Market Value']:,.0f}")
+        c3.metric("Total P/L", f"${totals['Total P/L']:,.0f}",
+                  delta=f"{totals['Total P/L %']:.2f}%" if pd.notna(totals["Total P/L %"]) else None)
+        c4.metric("Positions", f"{len(port)}")
 
-    mv_sum = port["Market Value"].sum()
-    port["Weight %"] = np.where(mv_sum>0, port["Market Value"]/mv_sum*100, 0.0)
+        mv_sum = port["Market Value"].sum()
+        port["Weight %"] = np.where(mv_sum>0, port["Market Value"]/mv_sum*100, 0.0)
 
-    st.subheader("🧾 Positions")
-    show_cols = ["Ticker","Quantity","Buy Price","Current Price","Cost Basis","Market Value","P/L","P/L %","Weight %"]
-    st.dataframe(port[show_cols].set_index("Ticker").round(2), width='stretch')
+        st.subheader("🧾 Positions")
+        show_cols = ["Ticker","Quantity","Buy Price","Current Price","Cost Basis","Market Value","P/L","P/L %","Weight %"]
+        st.dataframe(port[show_cols].set_index("Ticker").round(2), width='stretch')
 
-    @st.cache_data
-    def _portfolio_csv(df):
-        return df.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        "⬇️ Download Portfolio Overview (CSV)",
-        data=_portfolio_csv(port.round(4)),
-        file_name="portfolio_overview.csv",
-        mime="text/csv"
-    )
-
-    # --- Portfolio visuals ---
-    st.subheader("📊 P&L by Position")
-    try:
-        fig_pl = px.bar(
-            port.sort_values("P/L", ascending=True),
-            x="P/L", y="Ticker", orientation="h",
-            color="P/L", color_continuous_scale=["#d73027", "#fee08b", "#1a9850"],
-            labels={"P/L":"Profit / Loss (USD)"},
+        @st.cache_data
+        def _portfolio_csv(df):
+            return df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "⬇️ Download Portfolio Overview (CSV)",
+            data=_portfolio_csv(port.round(4)),
+            file_name="portfolio_overview.csv",
+            mime="text/csv"
         )
-        fig_pl.update_layout(margin=dict(l=20, r=20, t=20, b=20), height=420)
-        st.plotly_chart(fig_pl, width='stretch', key="portfolio_pl_chart")
-    except Exception:
-        pass
 
-    st.subheader("🥧 Allocation by Market Value")
-    try:
-        fig_alloc = px.pie(
-            port, names="Ticker", values="Market Value",
-            hole=0.45,
+        # --- Portfolio visuals ---
+        st.subheader("📊 P&L by Position")
+        try:
+            fig_pl = px.bar(
+                port.sort_values("P/L", ascending=True),
+                x="P/L", y="Ticker", orientation="h",
+                color="P/L", color_continuous_scale=["#d73027", "#fee08b", "#1a9850"],
+                labels={"P/L":"Profit / Loss (USD)"},
+            )
+            fig_pl.update_layout(margin=dict(l=20, r=20, t=20, b=20), height=420)
+            st.plotly_chart(fig_pl, width='stretch', key="portfolio_pl_chart")
+        except Exception:
+            pass
+
+        st.subheader("🥧 Allocation by Market Value")
+        try:
+            fig_alloc = px.pie(
+                port, names="Ticker", values="Market Value",
+                hole=0.45,
+            )
+            fig_alloc.update_traces(textposition='inside', textinfo='percent+label')
+            fig_alloc.update_layout(margin=dict(l=20, r=20, t=20, b=20), height=420)
+            st.plotly_chart(fig_alloc, width='stretch', key="portfolio_allocation_chart")
+        except Exception:
+            pass
+
+        st.subheader("📉 Portfolio vs SPY Performance Comparison")
+        
+        # Time period selector as tabs
+        time_periods = {
+            "1D": "1d",
+            "5D": "5d", 
+            "1M": "1mo",
+            "3M": "3mo",
+            "6M": "6mo",
+            "1Y": "1y",
+            "3Y": "3y",
+            "5Y": "5y"
+        }
+        
+        # Create tabs for time period selection
+        selected_period = st.radio(
+            "Time Period:",
+            options=list(time_periods.keys()),
+            index=5,  # Default to 1Y
+            horizontal=True,
+            key="portfolio_period"
         )
-        fig_alloc.update_traces(textposition='inside', textinfo='percent+label')
-        fig_alloc.update_layout(margin=dict(l=20, r=20, t=20, b=20), height=420)
-        st.plotly_chart(fig_alloc, width='stretch', key="portfolio_allocation_chart")
-    except Exception:
-        pass
-
-    st.subheader("📉 Portfolio vs SPY Performance Comparison")
-    
-    # Time period selector as tabs
-    time_periods = {
-        "1D": "1d",
-        "5D": "5d", 
-        "1M": "1mo",
-        "3M": "3mo",
-        "6M": "6mo",
-        "1Y": "1y",
-        "3Y": "3y",
-        "5Y": "5y"
-    }
-    
-    # Create tabs for time period selection
-    selected_period = st.radio(
-        "Time Period:",
-        options=list(time_periods.keys()),
-        index=5,  # Default to 1Y
-        horizontal=True,
-        key="portfolio_period"
-    )
-    
-    period_code = time_periods[selected_period]
-    
-    try:
-        # Build quantity map
-        qty_map = dict(zip(port["Ticker"], port["Quantity"]))
-        tickers_period = list(qty_map.keys())
-        price_cols = []
-        price_df = pd.DataFrame()
         
-        # Fetch price data for portfolio stocks
-        for t in tickers_period:
-            try:
-                h = yf.Ticker(t).history(period=period_code, interval="1d")["Close"].rename(t)
-                if not h.empty and not h.isna().all():
-                    price_df = pd.concat([price_df, h], axis=1)
-                    price_cols.append(t)
-            except Exception:
-                continue
+        period_code = time_periods[selected_period]
         
-        if price_df.empty:
-            st.info("Not enough price history to plot portfolio performance.")
-        else:
-            price_df = price_df.dropna(how="all").ffill()
+        try:
+            # Build quantity map
+            qty_map = dict(zip(port["Ticker"], port["Quantity"]))
+            tickers_period = list(qty_map.keys())
+            price_cols = []
+            price_df = pd.DataFrame()
             
-            # Compute portfolio value series
-            portfolio_value = pd.Series(0.0, index=price_df.index)
-            for t in price_cols:
-                if t in qty_map:
-                    portfolio_value = portfolio_value.add(price_df[t] * float(qty_map[t]), fill_value=0.0)
-
-            # Benchmark SPY
-            spy_data = yf.Ticker("SPY").history(period=period_code, interval="1d")["Close"]
-            if spy_data.empty:
-                st.info("Could not fetch SPY data for comparison.")
+            # Fetch price data for portfolio stocks
+            for t in tickers_period:
+                try:
+                    h = yf.Ticker(t).history(period=period_code, interval="1d")["Close"].rename(t)
+                    if not h.empty and not h.isna().all():
+                        price_df = pd.concat([price_df, h], axis=1)
+                        price_cols.append(t)
+                except Exception:
+                    continue
+            
+            if price_df.empty:
+                st.info("Not enough price history to plot portfolio performance.")
             else:
-                # Align dates and forward fill missing values
-                common_dates = portfolio_value.index.intersection(spy_data.index)
-                if len(common_dates) == 0:
-                    st.info("No overlapping dates between portfolio and SPY data.")
-                else:
-                    portfolio_aligned = portfolio_value.loc[common_dates].dropna()
-                    spy_aligned = spy_data.loc[common_dates].dropna()
-                    
-                    # Normalize to 100 starting value
-                    if len(portfolio_aligned) > 0 and len(spy_aligned) > 0:
-                        pv_norm = (portfolio_aligned / portfolio_aligned.iloc[0] * 100.0)
-                        spy_norm = (spy_aligned / spy_aligned.iloc[0] * 100.0)
-                        
-                        # Calculate performance metrics
-                        portfolio_return = ((pv_norm.iloc[-1] / pv_norm.iloc[0]) - 1) * 100 if len(pv_norm) > 1 else 0
-                        spy_return = ((spy_norm.iloc[-1] / spy_norm.iloc[0]) - 1) * 100 if len(spy_norm) > 1 else 0
-                        outperformance = portfolio_return - spy_return
-                        
-                        # Create the chart
-                        fig_port = go.Figure()
-                        fig_port.add_trace(go.Scatter(
-                            x=pv_norm.index, 
-                            y=pv_norm.values, 
-                            mode='lines', 
-                            name='Portfolio', 
-                            line=dict(color='#1f77b4', width=2)
-                        ))
-                        fig_port.add_trace(go.Scatter(
-                            x=spy_norm.index, 
-                            y=spy_norm.values, 
-                            mode='lines', 
-                            name='SPY', 
-                            line=dict(color='#ff7f0e', width=2)
-                        ))
-                        
-                        title_text = f"Indexed Performance ({selected_period}) - Portfolio: {portfolio_return:.1f}% | SPY: {spy_return:.1f}% | Outperformance: {outperformance:+.1f}%"
-                        
-                        fig_port.update_layout(
-                            title=title_text,
-                            xaxis_title="Date", 
-                            yaxis_title="Index Level (100 = Start)",
-                            hovermode="x unified", 
-                            margin=dict(l=20, r=20, t=60, b=20),
-                            legend=dict(x=0.02, y=0.98),
-                            height=500
-                        )
-                        st.plotly_chart(fig_port, width='stretch', key="portfolio_vs_spy_chart")
-                    else:
-                        st.info("Insufficient data for performance comparison.")
-            
-    except Exception as e:
-        st.error(f"Error generating portfolio comparison: {str(e)}")
-        st.info("Please try a different time period or check your portfolio data.")
+                price_df = price_df.dropna(how="all").ffill()
+                
+                # Compute portfolio value series
+                portfolio_value = pd.Series(0.0, index=price_df.index)
+                for t in price_cols:
+                    if t in qty_map:
+                        portfolio_value = portfolio_value.add(price_df[t] * float(qty_map[t]), fill_value=0.0)
 
-    # === AI Portfolio Analysis ===
-    st.header("🤖 AI Portfolio Analysis")
-    
-    # Refresh button for AI recommendations
-    col_refresh1, col_refresh2 = st.columns([1, 4])
-    with col_refresh1:
-        if st.button("🔄 Refresh AI Analysis", help="Generate new AI recommendations (uses OpenAI API credits)"):
-            st.session_state.force_refresh_recommendations = True
-            st.rerun()
-    with col_refresh2:
-        st.caption("💡 AI recommendations are cached to save costs. Click refresh to get new analysis.")
-    
-    def get_ai_portfolio_analysis_internal(portfolio_data, current_prices, totals):
+                # Benchmark SPY
+                spy_data = yf.Ticker("SPY").history(period=period_code, interval="1d")["Close"]
+                if spy_data.empty:
+                    st.info("Could not fetch SPY data for comparison.")
+                else:
+                    # Align dates and forward fill missing values
+                    common_dates = portfolio_value.index.intersection(spy_data.index)
+                    if len(common_dates) == 0:
+                        st.info("No overlapping dates between portfolio and SPY data.")
+                    else:
+                        portfolio_aligned = portfolio_value.loc[common_dates].dropna()
+                        spy_aligned = spy_data.loc[common_dates].dropna()
+                        
+                        # Normalize to 100 starting value
+                        if len(portfolio_aligned) > 0 and len(spy_aligned) > 0:
+                            pv_norm = (portfolio_aligned / portfolio_aligned.iloc[0] * 100.0)
+                            spy_norm = (spy_aligned / spy_aligned.iloc[0] * 100.0)
+                            
+                            # Calculate performance metrics
+                            portfolio_return = ((pv_norm.iloc[-1] / pv_norm.iloc[0]) - 1) * 100 if len(pv_norm) > 1 else 0
+                            spy_return = ((spy_norm.iloc[-1] / spy_norm.iloc[0]) - 1) * 100 if len(spy_norm) > 1 else 0
+                            outperformance = portfolio_return - spy_return
+                            
+                            # Create the chart
+                            fig_port = go.Figure()
+                            fig_port.add_trace(go.Scatter(
+                                x=pv_norm.index, 
+                                y=pv_norm.values, 
+                                mode='lines', 
+                                name='Portfolio', 
+                                line=dict(color='#1f77b4', width=2)
+                            ))
+                            fig_port.add_trace(go.Scatter(
+                                x=spy_norm.index, 
+                                y=spy_norm.values, 
+                                mode='lines', 
+                                name='SPY', 
+                                line=dict(color='#ff7f0e', width=2)
+                            ))
+                            
+                            title_text = f"Indexed Performance ({selected_period}) - Portfolio: {portfolio_return:.1f}% | SPY: {spy_return:.1f}% | Outperformance: {outperformance:+.1f}%"
+                            
+                            fig_port.update_layout(
+                                title=title_text,
+                                xaxis_title="Date", 
+                                yaxis_title="Index Level (100 = Start)",
+                                hovermode="x unified", 
+                                margin=dict(l=20, r=20, t=60, b=20),
+                                legend=dict(x=0.02, y=0.98),
+                                height=500
+                            )
+                            st.plotly_chart(fig_port, width='stretch', key="portfolio_vs_spy_chart")
+                        else:
+                            st.info("Insufficient data for performance comparison.")
+                
+        except Exception as e:
+            st.error(f"Error generating portfolio comparison: {str(e)}")
+            st.info("Please try a different time period or check your portfolio data.")
+
+        # === AI Portfolio Analysis ===
+        st.header("🤖 AI Portfolio Analysis")
+        
+        # Refresh button for AI recommendations
+        col_refresh1, col_refresh2 = st.columns([1, 4])
+        with col_refresh1:
+            if st.button("🔄 Refresh AI Analysis", help="Generate new AI recommendations (uses OpenAI API credits)"):
+                st.session_state.force_refresh_recommendations = True
+                st.rerun()
+        with col_refresh2:
+            st.caption("💡 AI recommendations are cached to save costs. Click refresh to get new analysis.")
+        
+        def get_ai_portfolio_analysis_internal(portfolio_data, current_prices, totals):
         """Generate AI-powered portfolio analysis using OpenAI API (internal, uncached)"""
         try:
             # Prepare portfolio summary for AI
@@ -887,80 +942,82 @@ if not portfolio_input.empty:
             
         except Exception as e:
             return f"Error generating AI analysis: {str(e)}"
-    
-    # Generate AI analysis - use cache from Supabase unless forced refresh
-    st.markdown("### 🤖 AI Portfolio Analysis")
-    
-    current_hash = get_portfolio_hash(st.session_state.manual_positions)
-    
-    # Check for cached recommendation first
-    cached_analysis = None
-    if not st.session_state.force_refresh_recommendations:
-        cached_analysis = get_cached_recommendation('portfolio_analysis', current_hash)
-    
-    if cached_analysis:
-        st.info("📦 Using cached analysis (portfolio unchanged). Click 'Refresh AI Analysis' for new insights.")
-        ai_analysis = cached_analysis
-    else:
-        with st.spinner("🤖 AI is analyzing your portfolio..."):
-            ai_analysis = get_ai_portfolio_analysis_internal(port, current_px.to_dict(), totals)
-            # Save to Supabase cache
-            save_recommendation_to_supabase('portfolio_analysis', current_hash, ai_analysis)
-            st.success("✅ New AI analysis generated and cached!")
         
-    st.markdown("### 📊 AI Portfolio Insights")
-    st.markdown(ai_analysis)
-    
-    # Enhanced portfolio metrics
-    st.markdown("---")
-    st.markdown("### 📊 Advanced Portfolio Metrics")
-    
-    # Calculate additional metrics
-    total_weighted_return = (port['Weight %'] * port['P/L %'] / 100).sum()
-    concentration_risk = port['Weight %'].max()  # Largest position weight
-    num_positions = len(port)
-    
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric("📈 Best Performer", 
-                 port.loc[port['P/L %'].idxmax(), 'Ticker'], 
-                 f"{port['P/L %'].max():.1f}%")
-    
-    with col2:
-        st.metric("📉 Worst Performer", 
-                 port.loc[port['P/L %'].idxmin(), 'Ticker'], 
-                 f"{port['P/L %'].min():.1f}%")
-    
-    with col3:
-        st.metric("🎯 Weighted Return", 
-                 f"{total_weighted_return:.2f}%")
-    
-    with col4:
-        st.metric("⚠️ Concentration Risk", 
-                 f"{concentration_risk:.1f}%", 
-                 delta=f"{num_positions} positions")
-    
-    # Additional risk metrics
-    col5, col6, col7, col8 = st.columns(4)
-    
-    with col5:
-        largest_position = port.loc[port['Market Value'].idxmax(), 'Ticker']
-        st.metric("🏆 Largest Position", largest_position)
-    
-    with col6:
-        total_exposure = port['Market Value'].sum()
-        st.metric("💰 Total Exposure", f"${total_exposure:,.0f}")
-    
-    with col7:
-        # Calculate portfolio beta approximation (simplified)
-        tech_exposure = port[port['Ticker'].isin(['QQQ', 'PLUG'])]['Weight %'].sum()
-        st.metric("⚡ Tech Exposure", f"{tech_exposure:.1f}%")
-    
-    with col8:
-        # International exposure
-        intl_exposure = port[port['Ticker'].isin(['VEA', 'RHM.DE'])]['Weight %'].sum()
-        st.metric("🌍 Intl Exposure", f"{intl_exposure:.1f}%")
+        # Generate AI analysis - use cache from Supabase unless forced refresh
+        st.markdown("### 🤖 AI Portfolio Analysis")
+        
+        current_hash = get_portfolio_hash(st.session_state.manual_positions)
+        
+        # Check for cached recommendation first
+        cached_analysis = None
+        if not st.session_state.force_refresh_recommendations:
+            cached_analysis = get_cached_recommendation('portfolio_analysis', current_hash)
+        
+        if cached_analysis:
+            st.info("📦 Using cached analysis (portfolio unchanged). Click 'Refresh AI Analysis' for new insights.")
+            ai_analysis = cached_analysis
+        else:
+            with st.spinner("🤖 AI is analyzing your portfolio..."):
+                ai_analysis = get_ai_portfolio_analysis_internal(port, current_px.to_dict(), totals)
+                # Save to Supabase cache
+                save_recommendation_to_supabase('portfolio_analysis', current_hash, ai_analysis)
+                st.success("✅ New AI analysis generated and cached!")
+            
+        st.markdown("### 📊 AI Portfolio Insights")
+        st.markdown(ai_analysis)
+        
+        # Enhanced portfolio metrics
+        st.markdown("---")
+        st.markdown("### 📊 Advanced Portfolio Metrics")
+        
+        # Calculate additional metrics
+        total_weighted_return = (port['Weight %'] * port['P/L %'] / 100).sum()
+        concentration_risk = port['Weight %'].max()  # Largest position weight
+        num_positions = len(port)
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric("📈 Best Performer", 
+                     port.loc[port['P/L %'].idxmax(), 'Ticker'], 
+                     f"{port['P/L %'].max():.1f}%")
+        
+        with col2:
+            st.metric("📉 Worst Performer", 
+                     port.loc[port['P/L %'].idxmin(), 'Ticker'], 
+                     f"{port['P/L %'].min():.1f}%")
+        
+        with col3:
+            st.metric("🎯 Weighted Return", 
+                     f"{total_weighted_return:.2f}%")
+        
+        with col4:
+            st.metric("⚠️ Concentration Risk", 
+                     f"{concentration_risk:.1f}%", 
+                     delta=f"{num_positions} positions")
+        
+        # Additional risk metrics
+        col5, col6, col7, col8 = st.columns(4)
+        
+        with col5:
+            largest_position = port.loc[port['Market Value'].idxmax(), 'Ticker']
+            st.metric("🏆 Largest Position", largest_position)
+        
+        with col6:
+            total_exposure = port['Market Value'].sum()
+            st.metric("💰 Total Exposure", f"${total_exposure:,.0f}")
+        
+        with col7:
+            # Calculate portfolio beta approximation (simplified)
+            tech_exposure = port[port['Ticker'].isin(['QQQ', 'PLUG'])]['Weight %'].sum()
+            st.metric("⚡ Tech Exposure", f"{tech_exposure:.1f}%")
+        
+        with col8:
+            # International exposure
+            intl_exposure = port[port['Ticker'].isin(['VEA', 'RHM.DE'])]['Weight %'].sum()
+            st.metric("🌍 Intl Exposure", f"{intl_exposure:.1f}%")
+    else:
+        st.info("📊 Add portfolio positions in the sidebar to see your portfolio analysis here.")
 
 # AI Portfolio Analysis is now always visible above
 
