@@ -69,8 +69,8 @@ portfolio_stocks = {"PLUG", "QQQ", "VTI", "VEA", "BTC-USD", "RHM.DE"}
 def get_supabase_client() -> Optional[Client]:
     """Get Supabase client with proper error handling"""
     if not SUPABASE_URL or not SUPABASE_KEY:
-        logging.error("Supabase credentials not configured")
-        logging.error(f"URL present: {bool(SUPABASE_URL)}, KEY present: {bool(SUPABASE_KEY)}")
+        logger.error("Supabase credentials not configured")
+        logger.error(f"URL present: {bool(SUPABASE_URL)}, KEY present: {bool(SUPABASE_KEY)}")
         return None
     try:
         # Additional cleaning (get_env_var already strips, but double-check)
@@ -79,34 +79,37 @@ def get_supabase_client() -> Optional[Client]:
         
         # Validate URL format
         if not url.startswith("https://") or ".supabase.co" not in url:
-            logging.error(f"Invalid Supabase URL format: {url[:50]}...")
+            logger.error(f"Invalid Supabase URL format: {url[:50]}...")
             return None
         
-        # Validate key format (JWT tokens start with eyJ)
-        if not key.startswith("eyJ"):
-            logging.warning("Supabase key doesn't look like a valid JWT token")
+        # Validate key format (JWT tokens start with eyJ or sb_publishable_)
+        if not (key.startswith("eyJ") or key.startswith("sb_publishable_")):
+            logger.warning(f"Supabase key format unexpected. Starts with: {key[:20]}...")
+            logger.warning("Expected 'eyJ...' (legacy anon) or 'sb_publishable_...' (new key)")
         
-        logging.info(f"Connecting to Supabase: {url[:30]}...")
+        logger.info(f"Connecting to Supabase: {url[:30]}...")
         client = create_client(url, key)
         
-        # Test connection
+        # Test the connection
         try:
             test_response = client.table('portfolio_positions').select('id').limit(1).execute()
-            logging.info("✅ Supabase connection successful")
-        except Exception as auth_error:
-            error_msg = str(auth_error)
-            if "401" in error_msg or "Invalid API key" in error_msg:
-                logging.error("❌ Supabase authentication failed - Invalid API key")
-                logging.error("Make sure you're using the 'anon' public key from Supabase Dashboard")
+            logger.info("✅ Supabase connection test successful")
+        except Exception as test_error:
+            error_msg = str(test_error)
+            if "401" in error_msg or "Invalid API key" in error_msg or "Unauthorized" in error_msg:
+                logger.error("❌ Supabase authentication failed - Invalid API key")
+                logger.error("Please check your SUPABASE_KEY in environment variables")
+                logger.error("💡 Try using the Legacy anon public key from Supabase Dashboard")
+                return None
             else:
-                # Other error might be OK (table might not exist yet)
-                logging.info("Supabase client created (connection test had minor issue)")
+                # Table might not exist yet, that's OK
+                logger.warning(f"Connection test warning (might be OK): {error_msg[:100]}")
         
         return client
     except Exception as e:
-        logging.error(f"Could not initialize Supabase client: {e}")
+        logger.error(f"Could not initialize Supabase client: {e}")
         import traceback
-        logging.error(traceback.format_exc())
+        logger.error(traceback.format_exc())
         return None
 
 supabase: Optional[Client] = get_supabase_client()
@@ -124,16 +127,48 @@ def load_portfolio_from_supabase() -> List[Dict]:
     """Load portfolio positions from Supabase"""
     client = get_supabase_client()
     if not client:
-        logger.warning("Supabase client not available, using default portfolio")
+        logger.warning("Supabase client not available")
+        logger.warning(f"URL configured: {bool(SUPABASE_URL)}, KEY configured: {bool(SUPABASE_KEY)}")
         return []
+    
     try:
+        logger.info("Fetching portfolio from Supabase...")
         response = client.table('portfolio_positions').select('*').execute()
+        
+        logger.info(f"Supabase response received. Has data: {bool(response.data)}, Count: {len(response.data) if response.data else 0}")
+        
         if response.data and len(response.data) > 0:
-            return [{"Ticker": row['ticker'], "Buy Price": float(row['buy_price']), "Quantity": float(row['quantity'])} 
-                    for row in response.data]
+            portfolio = []
+            for row in response.data:
+                try:
+                    portfolio.append({
+                        "Ticker": str(row.get('ticker', '')).strip(),
+                        "Buy Price": float(row.get('buy_price', 0)),
+                        "Quantity": float(row.get('quantity', 0))
+                    })
+                except Exception as row_error:
+                    logger.error(f"Error processing row: {row_error}, Row data: {row}")
+            
+            logger.info(f"Successfully loaded {len(portfolio)} positions from Supabase")
+            return portfolio
+        else:
+            logger.warning("No portfolio data found in Supabase (table exists but is empty)")
+            return []
+            
     except Exception as e:
-        logger.error(f"Error loading portfolio from Supabase: {e}")
-        logger.error(f"Error details: {str(e)}")
+        error_msg = str(e)
+        logger.error(f"Error loading portfolio from Supabase: {error_msg}")
+        logger.error(f"Error type: {type(e).__name__}")
+        
+        # Check if it's an authentication error
+        if "401" in error_msg or "Invalid API key" in error_msg or "Unauthorized" in error_msg:
+            logger.error("Authentication failed - check your Supabase API key")
+        elif "relation" in error_msg.lower() or "does not exist" in error_msg.lower():
+            logger.warning("Table might not exist yet - this is OK for first run")
+        else:
+            import traceback
+            logger.error(traceback.format_exc())
+    
     return []
 
 def fetch_current_prices(tickers: List[str]) -> Dict[str, float]:
@@ -585,9 +620,12 @@ async def send_investment_recommendations(context: ContextTypes.DEFAULT_TYPE):
         portfolio = load_portfolio_from_supabase()
         
         if not portfolio:
+            logger.warning("No portfolio found for recommendations")
             await context.bot.send_message(
                 chat_id=TELEGRAM_USER_ID,
-                text="⚠️ No portfolio data found. Please add positions to your portfolio."
+                text="⚠️ **No portfolio data found in database.**\n\n"
+                     "Please add your portfolio positions in the Streamlit app first.\n\n"
+                     "The portfolio will be saved to Supabase and then available for Telegram updates."
             )
             return
         

@@ -125,26 +125,6 @@ def get_supabase_client() -> Client:
     if supabase_key:
         supabase_key = supabase_key.strip().strip('"').strip("'").strip()
     
-    # DEBUG: Show what we're reading (for troubleshooting)
-    debug_mode = st.sidebar.checkbox("🔍 Debug Supabase Connection", value=False)
-    if debug_mode:
-        st.sidebar.write("**DEBUG INFO:**")
-        st.sidebar.write(f"URL present: {bool(supabase_url)}")
-        st.sidebar.write(f"KEY present: {bool(supabase_key)}")
-        if supabase_url:
-            st.sidebar.write(f"URL: `{supabase_url[:50]}...`")
-        if supabase_key:
-            st.sidebar.write(f"KEY prefix: `{supabase_key[:20]}...`")
-        # Try direct access to see what Streamlit has
-        try:
-            if hasattr(st, 'secrets'):
-                direct_url = st.secrets.get("SUPABASE_URL", "NOT_FOUND")
-                direct_key = st.secrets.get("SUPABASE_KEY", "NOT_FOUND")
-                st.sidebar.write(f"Direct URL: `{str(direct_url)[:50]}...`")
-                st.sidebar.write(f"Direct KEY: `{str(direct_key)[:20]}...`")
-        except:
-            st.sidebar.write("Could not access st.secrets directly")
-    
     if not supabase_url or not supabase_key:
         # Check if we're on Streamlit Cloud or local
         is_cloud = hasattr(st, 'secrets') and st.secrets
@@ -158,8 +138,6 @@ def get_supabase_client() -> Client:
     if not supabase_url.startswith("https://") or ".supabase.co" not in supabase_url:
         st.error(f"⚠️ Invalid Supabase URL format. Should be: https://your-project.supabase.co")
         st.info(f"Current URL: {supabase_url[:50]}..." if len(supabase_url) > 50 else f"Current URL: {supabase_url}")
-        if debug_mode:
-            st.sidebar.error("URL validation failed")
         return None
     
     # Validate key format - accept both new publishable keys (sb_publishable_) and legacy anon keys (eyJ)
@@ -167,30 +145,18 @@ def get_supabase_client() -> Client:
     if not key_valid:
         st.warning("⚠️ Supabase key format unexpected. Expected 'eyJ...' (legacy anon) or 'sb_publishable_...' (new key)")
         st.info("💡 Try using the **Legacy anon public key** from: Supabase Dashboard → Settings → API → Legacy anon, service_role API keys")
-        if debug_mode:
-            st.sidebar.warning(f"Key format check failed. Key starts with: {supabase_key[:10]}")
     
     try:
-        if debug_mode:
-            st.sidebar.write("🔄 Creating Supabase client...")
-        
         client = create_client(supabase_url, supabase_key)
-        
-        if debug_mode:
-            st.sidebar.write("✅ Client created, testing connection...")
         
         # Test the connection with a simple query
         try:
             # Try a simple query to verify the key works
             test_response = client.table('portfolio_positions').select('id').limit(1).execute()
             # If we get here, the key is valid
-            if debug_mode:
-                st.sidebar.success("✅ Connection test successful!")
             return client
         except Exception as auth_error:
             error_msg = str(auth_error)
-            if debug_mode:
-                st.sidebar.error(f"Connection test failed: {error_msg[:100]}")
             
             if "401" in error_msg or "Invalid API key" in error_msg or "Unauthorized" in error_msg or "invalid API key" in error_msg.lower():
                 st.error("🔒 **Supabase Authentication Failed**")
@@ -213,19 +179,13 @@ def get_supabase_client() -> Client:
                 3. **Test the key:**
                    - The key should start with `eyJ` (legacy) or `sb_publishable_` (new)
                    - It should be very long (100+ characters)
-                
-                **Enable debug mode** (checkbox in sidebar) to see what's being read.
                 """)
                 return None
             else:
                 # Other error, might be table doesn't exist yet (that's okay)
-                if debug_mode:
-                    st.sidebar.warning(f"Connection test had issue (might be OK): {error_msg[:50]}")
                 return client
     except Exception as e:
         error_msg = str(e)
-        if debug_mode:
-            st.sidebar.error(f"Client creation failed: {error_msg}")
         
         if "401" in error_msg or "Invalid API key" in error_msg or "invalid API key" in error_msg.lower():
             st.error("🔒 **Supabase Authentication Failed**")
@@ -233,9 +193,6 @@ def get_supabase_client() -> Client:
             st.info("💡 Try using the **Legacy anon public key** from Supabase Dashboard → Settings → API")
         else:
             st.error(f"⚠️ Failed to initialize Supabase client: {e}")
-            if debug_mode:
-                import traceback
-                st.sidebar.code(traceback.format_exc())
         return None
 
 # Initialize Supabase client (will be created on first use)
@@ -395,6 +352,28 @@ st.markdown("""
 # Tab Navigation
 # -------------------------------------------------------
 tab1, tab2 = st.tabs(["📊 Portfolio Analysis", "📋 Investment Proposal"])
+
+# -------------------------------------------------------
+# Debug Mode (outside cached functions)
+# -------------------------------------------------------
+debug_supabase = st.sidebar.checkbox("🔍 Debug Supabase Connection", value=False)
+if debug_supabase:
+    st.sidebar.write("**DEBUG INFO:**")
+    st.sidebar.write(f"URL present: {bool(SUPABASE_URL)}")
+    st.sidebar.write(f"KEY present: {bool(SUPABASE_KEY)}")
+    if SUPABASE_URL:
+        st.sidebar.write(f"URL: `{SUPABASE_URL[:50]}...`")
+    if SUPABASE_KEY:
+        st.sidebar.write(f"KEY prefix: `{SUPABASE_KEY[:20]}...`")
+    # Try direct access to see what Streamlit has
+    try:
+        if hasattr(st, 'secrets'):
+            direct_url = st.secrets.get("SUPABASE_URL", "NOT_FOUND")
+            direct_key = st.secrets.get("SUPABASE_KEY", "NOT_FOUND")
+            st.sidebar.write(f"Direct URL: `{str(direct_url)[:50]}...`")
+            st.sidebar.write(f"Direct KEY: `{str(direct_key)[:20]}...`")
+    except:
+        st.sidebar.write("Could not access st.secrets directly")
 
 # -------------------------------------------------------
 # API Key Configuration
