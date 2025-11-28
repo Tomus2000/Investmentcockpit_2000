@@ -38,6 +38,8 @@ config.py
 secrets.toml
 .env
 MY_API_KEYS.txt
+# Keep .env.example (safe to commit)
+!.env.example
 
 # Logs
 *.log

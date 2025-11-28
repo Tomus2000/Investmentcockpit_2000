@@ -412,6 +412,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/daily - Get daily summary\n"
         "/portfolio - Get current portfolio value and statistics\n"
         "/recommendations - Get AI investment recommendations\n"
+        "/test - Send portfolio summary and recommendations NOW (for testing)\n"
         "/help - Show this help\n\n"
         "⏰ **Scheduled Updates:**\n"
         "• Portfolio summary: 9:00 AM (Lisbon time)\n"
@@ -469,6 +470,23 @@ async def daily_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /help command"""
     await start(update, context)
+
+async def test_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /test command - Send portfolio summary and recommendations immediately"""
+    await update.message.reply_text("🚀 Sending portfolio summary and recommendations now...")
+    
+    try:
+        # Send portfolio summary
+        await send_portfolio_summary(context)
+        await asyncio.sleep(1)
+        
+        # Send recommendations
+        await send_investment_recommendations(context)
+        
+        await update.message.reply_text("✅ Messages sent! Check your Telegram.")
+    except Exception as e:
+        logger.error(f"Error in test_now: {e}")
+        await update.message.reply_text(f"❌ Error: {str(e)}")
 
 async def send_portfolio_summary(context: ContextTypes.DEFAULT_TYPE):
     """Send portfolio summary at 9am Lisbon time"""
@@ -667,6 +685,7 @@ def main():
     
     application.add_handler(CommandHandler("portfolio", portfolio_summary_cmd))
     application.add_handler(CommandHandler("recommendations", recommendations_cmd))
+    application.add_handler(CommandHandler("test", test_now))  # Test command to send messages now
     
     # Run the bot
     logger.info("Starting Stock News Bot with scheduled portfolio updates...")
