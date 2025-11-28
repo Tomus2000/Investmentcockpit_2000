@@ -66,7 +66,10 @@ async def test_messages():
         print(f"❌ Failed to start bot: {e}")
         return
     
-    # Create a simple context
+    # Create a proper context using ContextTypes
+    from telegram.ext import ContextTypes
+    
+    # Create context manually
     class SimpleContext:
         def __init__(self, bot):
             self.bot = bot
@@ -76,6 +79,7 @@ async def test_messages():
     try:
         # Test 1: Send portfolio summary
         print("\n📊 Sending portfolio summary...")
+        print("   Checking portfolio data...")
         await send_portfolio_summary(context)
         print("✅ Portfolio summary sent!")
         
@@ -91,9 +95,19 @@ async def test_messages():
         print("📱 Check your Telegram now!")
         
     except Exception as e:
-        print(f"\n❌ Error: {e}")
+        print(f"\n❌ Error sending messages: {e}")
         import traceback
+        print("\nFull error traceback:")
         traceback.print_exc()
+        
+        # Try to send error message to user
+        try:
+            await application.bot.send_message(
+                chat_id=TELEGRAM_USER_ID,
+                text=f"❌ Error in test script: {str(e)}"
+            )
+        except Exception as send_error:
+            print(f"Could not send error message: {send_error}")
     finally:
         try:
             await application.stop()

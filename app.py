@@ -830,118 +830,118 @@ with tab1:
             st.caption("💡 AI recommendations are cached to save costs. Click refresh to get new analysis.")
         
         def get_ai_portfolio_analysis_internal(portfolio_data, current_prices, totals):
-        """Generate AI-powered portfolio analysis using OpenAI API (internal, uncached)"""
-        try:
-            # Prepare portfolio summary for AI
-            portfolio_summary = f"""
-            Portfolio Analysis Request:
-            
-            Current Holdings:
-            """
-            for _, row in portfolio_data.iterrows():
-                ticker = row['Ticker']
-                quantity = row['Quantity']
-                buy_price = row['Buy Price']
-                current_price = current_prices.get(ticker, 'N/A')
-                market_value = row['Market Value']
-                pnl = row['P/L']
-                pnl_pct = row['P/L %']
+            """Generate AI-powered portfolio analysis using OpenAI API (internal, uncached)"""
+            try:
+                # Prepare portfolio summary for AI
+                portfolio_summary = f"""
+                Portfolio Analysis Request:
                 
-                current_price_str = f"{current_price:.2f}" if isinstance(current_price, (int, float)) else "N/A"
+                Current Holdings:
+                """
+                for _, row in portfolio_data.iterrows():
+                    ticker = row['Ticker']
+                    quantity = row['Quantity']
+                    buy_price = row['Buy Price']
+                    current_price = current_prices.get(ticker, 'N/A')
+                    market_value = row['Market Value']
+                    pnl = row['P/L']
+                    pnl_pct = row['P/L %']
+                    
+                    current_price_str = f"{current_price:.2f}" if isinstance(current_price, (int, float)) else "N/A"
+                    portfolio_summary += f"""
+                - {ticker}: {quantity} shares @ ${buy_price:.2f} (Current: ${current_price_str})
+                  Market Value: ${market_value:,.0f}, P/L: ${pnl:,.0f} ({pnl_pct:.1f}%)
+                """
+                
                 portfolio_summary += f"""
-            - {ticker}: {quantity} shares @ ${buy_price:.2f} (Current: ${current_price_str})
-              Market Value: ${market_value:,.0f}, P/L: ${pnl:,.0f} ({pnl_pct:.1f}%)
-            """
-            
-            portfolio_summary += f"""
-            
-            Portfolio Totals:
-            - Total Cost Basis: ${totals['Total Cost Basis']:,.0f}
-            - Total Market Value: ${totals['Total Market Value']:,.0f}
-            - Total P/L: ${totals['Total P/L']:,.0f} ({totals['Total P/L %']:.1f}%)
-            - Number of Positions: {len(portfolio_data)}
-            
-            Please provide a DEEP, SOPHISTICATED portfolio analysis with the following structure:
-            
-            ## 🎯 EXECUTIVE SUMMARY
-            Brief 2-sentence overview of portfolio health and key concerns/opportunities.
-            
-            ## 📊 RISK ASSESSMENT
-            - **Concentration Risk**: Analyze position sizing and sector concentration
-            - **Volatility Analysis**: Assess portfolio volatility vs market
-            - **Correlation Risk**: Identify potential correlation risks between holdings
-            - **Geographic Risk**: Analyze international exposure and currency risks
-            - **Liquidity Risk**: Assess position liquidity and market cap concerns
-            
-            ## 🏗️ PORTFOLIO CONSTRUCTION
-            - **Asset Allocation**: Breakdown by asset classes (stocks, ETFs, crypto, etc.)
-            - **Sector Analysis**: Identify sector over/under-weighting vs market
-            - **Style Analysis**: Growth vs value, large vs small cap exposure
-            - **Geographic Exposure**: US vs international allocation
-            
-            ## 📈 PERFORMANCE ANALYSIS
-            - **Risk-Adjusted Returns**: Sharpe ratio estimation and risk efficiency
-            - **Performance Attribution**: Which positions contributed most to returns
-            - **Drawdown Analysis**: Maximum potential losses and recovery periods
-            - **Volatility Comparison**: Portfolio volatility vs benchmarks (SPY, QQQ)
-            
-            ## ⚠️ RISK FACTORS & CONCERNS
-            - **Top 3 Portfolio Risks**: Specific, actionable risk concerns
-            - **Position-Specific Risks**: Individual stock/asset risks
-            - **Market Environment Sensitivity**: How portfolio performs in different market conditions
-            
-            ## 🎯 STRATEGIC RECOMMENDATIONS
-            - **Immediate Actions**: 3 specific moves to make now
-            - **Position Adjustments**: Specific buy/sell/rebalance recommendations
-            - **Hedging Strategies**: Options, bonds, or other hedges to consider
-            - **Rebalancing Schedule**: When and how to rebalance
-            
-            ## 🔮 MARKET OUTLOOK & POSITIONING
-            - **Current Market Environment**: How portfolio fits current conditions
-            - **Interest Rate Sensitivity**: Impact of rate changes on holdings
-            - **Economic Cycle Positioning**: How portfolio aligns with economic cycles
-            - **Alternative Scenarios**: Performance in bull/bear/sideways markets
-            
-            ## 💡 OPPORTUNITY ANALYSIS
-            - **Underweighted Sectors**: Sectors to consider adding
-            - **Geographic Opportunities**: International markets to explore
-            - **Alternative Assets**: REITs, commodities, or other alternatives
-            - **Tax Optimization**: Tax-loss harvesting or optimization opportunities
-            
-            Provide specific, actionable insights with concrete recommendations. Use financial terminology appropriately. Maximum 1200 words.
-            """
-            
-            # Call OpenAI API using requests
-            headers = {
-                "Authorization": f"Bearer {active_openai_key}",
-                "Content-Type": "application/json"
-            }
-            
-            data = {
-                "model": "gpt-4",
-                "messages": [
-                    {"role": "system", "content": "You are a senior portfolio manager and chief investment officer with 20+ years of experience at top-tier investment firms. You have deep expertise in quantitative portfolio analysis, risk management, derivatives, alternative investments, and global markets. Provide institutional-grade analysis with specific, actionable recommendations. Use sophisticated financial terminology and provide detailed reasoning for all recommendations."},
-                    {"role": "user", "content": portfolio_summary}
-                ],
-                "max_tokens": 2000,
-                "temperature": 0.3
-            }
-            
-            response = requests.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers=headers,
-                json=data,
-                timeout=90
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                return result['choices'][0]['message']['content']
-            else:
-                return f"API Error: {response.status_code} - {response.text}"
-            
-        except Exception as e:
-            return f"Error generating AI analysis: {str(e)}"
+                
+                Portfolio Totals:
+                - Total Cost Basis: ${totals['Total Cost Basis']:,.0f}
+                - Total Market Value: ${totals['Total Market Value']:,.0f}
+                - Total P/L: ${totals['Total P/L']:,.0f} ({totals['Total P/L %']:.1f}%)
+                - Number of Positions: {len(portfolio_data)}
+                
+                Please provide a DEEP, SOPHISTICATED portfolio analysis with the following structure:
+                
+                ## 🎯 EXECUTIVE SUMMARY
+                Brief 2-sentence overview of portfolio health and key concerns/opportunities.
+                
+                ## 📊 RISK ASSESSMENT
+                - **Concentration Risk**: Analyze position sizing and sector concentration
+                - **Volatility Analysis**: Assess portfolio volatility vs market
+                - **Correlation Risk**: Identify potential correlation risks between holdings
+                - **Geographic Risk**: Analyze international exposure and currency risks
+                - **Liquidity Risk**: Assess position liquidity and market cap concerns
+                
+                ## 🏗️ PORTFOLIO CONSTRUCTION
+                - **Asset Allocation**: Breakdown by asset classes (stocks, ETFs, crypto, etc.)
+                - **Sector Analysis**: Identify sector over/under-weighting vs market
+                - **Style Analysis**: Growth vs value, large vs small cap exposure
+                - **Geographic Exposure**: US vs international allocation
+                
+                ## 📈 PERFORMANCE ANALYSIS
+                - **Risk-Adjusted Returns**: Sharpe ratio estimation and risk efficiency
+                - **Performance Attribution**: Which positions contributed most to returns
+                - **Drawdown Analysis**: Maximum potential losses and recovery periods
+                - **Volatility Comparison**: Portfolio volatility vs benchmarks (SPY, QQQ)
+                
+                ## ⚠️ RISK FACTORS & CONCERNS
+                - **Top 3 Portfolio Risks**: Specific, actionable risk concerns
+                - **Position-Specific Risks**: Individual stock/asset risks
+                - **Market Environment Sensitivity**: How portfolio performs in different market conditions
+                
+                ## 🎯 STRATEGIC RECOMMENDATIONS
+                - **Immediate Actions**: 3 specific moves to make now
+                - **Position Adjustments**: Specific buy/sell/rebalance recommendations
+                - **Hedging Strategies**: Options, bonds, or other hedges to consider
+                - **Rebalancing Schedule**: When and how to rebalance
+                
+                ## 🔮 MARKET OUTLOOK & POSITIONING
+                - **Current Market Environment**: How portfolio fits current conditions
+                - **Interest Rate Sensitivity**: Impact of rate changes on holdings
+                - **Economic Cycle Positioning**: How portfolio aligns with economic cycles
+                - **Alternative Scenarios**: Performance in bull/bear/sideways markets
+                
+                ## 💡 OPPORTUNITY ANALYSIS
+                - **Underweighted Sectors**: Sectors to consider adding
+                - **Geographic Opportunities**: International markets to explore
+                - **Alternative Assets**: REITs, commodities, or other alternatives
+                - **Tax Optimization**: Tax-loss harvesting or optimization opportunities
+                
+                Provide specific, actionable insights with concrete recommendations. Use financial terminology appropriately. Maximum 1200 words.
+                """
+                
+                # Call OpenAI API using requests
+                headers = {
+                    "Authorization": f"Bearer {active_openai_key}",
+                    "Content-Type": "application/json"
+                }
+                
+                data = {
+                    "model": "gpt-4",
+                    "messages": [
+                        {"role": "system", "content": "You are a senior portfolio manager and chief investment officer with 20+ years of experience at top-tier investment firms. You have deep expertise in quantitative portfolio analysis, risk management, derivatives, alternative investments, and global markets. Provide institutional-grade analysis with specific, actionable recommendations. Use sophisticated financial terminology and provide detailed reasoning for all recommendations."},
+                        {"role": "user", "content": portfolio_summary}
+                    ],
+                    "max_tokens": 2000,
+                    "temperature": 0.3
+                }
+                
+                response = requests.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers=headers,
+                    json=data,
+                    timeout=90
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    return result['choices'][0]['message']['content']
+                else:
+                    return f"API Error: {response.status_code} - {response.text}"
+                
+            except Exception as e:
+                return f"Error generating AI analysis: {str(e)}"
         
         # Generate AI analysis - use cache from Supabase unless forced refresh
         st.markdown("### 🤖 AI Portfolio Analysis")
