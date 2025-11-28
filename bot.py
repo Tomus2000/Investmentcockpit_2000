@@ -58,11 +58,21 @@ LISBON_TZ = pytz.timezone('Europe/Lisbon')
 portfolio_stocks = {"PLUG", "QQQ", "VTI", "VEA", "BTC-USD", "RHM.DE"}
 
 # Initialize Supabase client
-supabase: Optional[Client] = None
-try:
-    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-except Exception as e:
-    logging.warning(f"Could not initialize Supabase client: {e}")
+def get_supabase_client() -> Optional[Client]:
+    """Get Supabase client with proper error handling"""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        logging.error("Supabase credentials not configured")
+        return None
+    try:
+        # Strip whitespace
+        url = SUPABASE_URL.strip().strip('"').strip("'")
+        key = SUPABASE_KEY.strip().strip('"').strip("'")
+        return create_client(url, key)
+    except Exception as e:
+        logging.error(f"Could not initialize Supabase client: {e}")
+        return None
+
+supabase: Optional[Client] = get_supabase_client()
 
 # Setup logging
 logging.basicConfig(
@@ -75,16 +85,18 @@ logger = logging.getLogger(__name__)
 
 def load_portfolio_from_supabase() -> List[Dict]:
     """Load portfolio positions from Supabase"""
-    if not supabase:
+    client = get_supabase_client()
+    if not client:
         logger.warning("Supabase client not available, using default portfolio")
         return []
     try:
-        response = supabase.table('portfolio_positions').select('*').execute()
+        response = client.table('portfolio_positions').select('*').execute()
         if response.data and len(response.data) > 0:
             return [{"Ticker": row['ticker'], "Buy Price": float(row['buy_price']), "Quantity": float(row['quantity'])} 
                     for row in response.data]
     except Exception as e:
         logger.error(f"Error loading portfolio from Supabase: {e}")
+        logger.error(f"Error details: {str(e)}")
     return []
 
 def fetch_current_prices(tickers: List[str]) -> Dict[str, float]:
@@ -566,6 +578,7 @@ async def schedule_daily_tasks(application: Application):
     
     # Wait for application to be ready
     await asyncio.sleep(10)
+    logger.info("Scheduler started. Waiting for 9:00 AM and 9:30 AM (Lisbon time)...")
     
     while True:
         try:
@@ -578,16 +591,27 @@ async def schedule_daily_tasks(application: Application):
             target_time_9am = datetime.strptime("09:00", "%H:%M").time()
             target_time_930am = datetime.strptime("09:30", "%H:%M").time()
             
+            # Log current time every hour for debugging
+            if current_time.minute == 0:
+                logger.info(f"Current Lisbon time: {current_time.strftime('%H:%M')} - Waiting for scheduled times...")
+            
             # Check if it's 9:00 (within 1 minute window) and we haven't sent today
             if (target_time_9am.hour == current_time.hour and 
                 target_time_9am.minute == current_time.minute and
                 last_sent_9am != current_date):
-                # Create a context using the bot
-                bot = application.bot
-                context = type('Context', (), {'bot': bot})()
-                await send_portfolio_summary(context)
-                last_sent_9am = current_date
-                logger.info(f"Sent 9am portfolio summary on {current_date}")
+                logger.info(f"⏰ It's 9:00 AM! Sending portfolio summary...")
+                try:
+                    # Create a simple context object with bot
+                    class SimpleContext:
+                        def __init__(self, bot):
+                            self.bot = bot
+                    
+                    context = SimpleContext(application.bot)
+                    await send_portfolio_summary(context)
+                    last_sent_9am = current_date
+                    logger.info(f"✅ Sent 9am portfolio summary on {current_date}")
+                except Exception as e:
+                    logger.error(f"❌ Failed to send 9am summary: {e}")
                 # Wait 2 minutes to avoid sending multiple times
                 await asyncio.sleep(120)
             
@@ -595,12 +619,19 @@ async def schedule_daily_tasks(application: Application):
             if (target_time_930am.hour == current_time.hour and 
                 target_time_930am.minute == current_time.minute and
                 last_sent_930am != current_date):
-                # Create a context using the bot
-                bot = application.bot
-                context = type('Context', (), {'bot': bot})()
-                await send_investment_recommendations(context)
-                last_sent_930am = current_date
-                logger.info(f"Sent 9:30am recommendations on {current_date}")
+                logger.info(f"⏰ It's 9:30 AM! Sending investment recommendations...")
+                try:
+                    # Create a simple context object with bot
+                    class SimpleContext:
+                        def __init__(self, bot):
+                            self.bot = bot
+                    
+                    context = SimpleContext(application.bot)
+                    await send_investment_recommendations(context)
+                    last_sent_930am = current_date
+                    logger.info(f"✅ Sent 9:30am recommendations on {current_date}")
+                except Exception as e:
+                    logger.error(f"❌ Failed to send 9:30am recommendations: {e}")
                 # Wait 2 minutes to avoid sending multiple times
                 await asyncio.sleep(120)
             
@@ -608,6 +639,8 @@ async def schedule_daily_tasks(application: Application):
             await asyncio.sleep(60)
         except Exception as e:
             logger.error(f"Error in scheduled task loop: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             await asyncio.sleep(60)
 
 def main():
@@ -640,17 +673,25 @@ def main():
     logger.info("Portfolio summary scheduled for 9:00 AM Lisbon time")
     logger.info("Investment recommendations scheduled for 9:30 AM Lisbon time")
     
-    # Start scheduler in background thread
+    # Start scheduler in background thread (runs in parallel with bot)
     import threading
     def start_scheduler_thread():
+        """Start scheduler in separate thread with its own event loop"""
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        loop.run_until_complete(schedule_daily_tasks(application))
+        try:
+            loop.run_until_complete(schedule_daily_tasks(application))
+        except Exception as e:
+            logger.error(f"Scheduler thread error: {e}")
+        finally:
+            loop.close()
     
     scheduler_thread = threading.Thread(target=start_scheduler_thread, daemon=True)
     scheduler_thread.start()
+    logger.info("✅ Scheduler thread started")
     
     # Run the bot (blocking)
+    logger.info("🚀 Starting bot...")
     application.run_polling()
 
 if __name__ == '__main__':

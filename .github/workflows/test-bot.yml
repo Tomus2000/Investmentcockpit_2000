@@ -1,0 +1,91 @@
+name: Test Telegram Bot
+
+on:
+  workflow_dispatch:  # Manual trigger
+  push:
+    branches: [ main ]
+    paths:
+      - 'bot.py'
+      - '.github/workflows/test-bot.yml'
+  schedule:
+    # Run daily at 8:50 AM UTC (9:50 AM Lisbon time) to test before scheduled messages
+    - cron: '50 8 * * *'
+
+jobs:
+  test-bot:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        pip install -r requirements_bot.txt
+    
+    - name: Test bot connection
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_USER_ID: ${{ secrets.TELEGRAM_USER_ID }}
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      run: |
+        python -c "
+        import os
+        from telegram import Bot
+        
+        # Test bot token
+        bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
+        user_id = os.getenv('TELEGRAM_USER_ID')
+        
+        if not bot_token:
+            print('❌ TELEGRAM_BOT_TOKEN not set')
+            exit(1)
+        
+        if not user_id:
+            print('❌ TELEGRAM_USER_ID not set')
+            exit(1)
+        
+        try:
+            bot = Bot(token=bot_token)
+            # Test bot info
+            bot_info = bot.get_me()
+            print(f'✅ Bot connected: @{bot_info.username}')
+            
+            # Test sending message
+            bot.send_message(chat_id=user_id, text='🧪 Test message from GitHub Actions - Bot is working!')
+            print('✅ Test message sent successfully!')
+        except Exception as e:
+            print(f'❌ Bot test failed: {e}')
+            exit(1)
+        "
+    
+    - name: Test portfolio functions
+      env:
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      run: |
+        python -c "
+        import os
+        import sys
+        sys.path.insert(0, '.')
+        
+        # Import bot functions
+        from bot import load_portfolio_from_supabase, get_supabase_client
+        
+        supabase = get_supabase_client()
+        if supabase:
+            print('✅ Supabase client created')
+            portfolio = load_portfolio_from_supabase()
+            print(f'✅ Portfolio loaded: {len(portfolio)} positions')
+        else:
+            print('⚠️ Supabase client not available (check credentials)')
+        "
+
