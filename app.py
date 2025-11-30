@@ -413,7 +413,7 @@ st.markdown("""
 # -------------------------------------------------------
 # Tab Navigation
 # -------------------------------------------------------
-tab1, tab2 = st.tabs(["📊 Portfolio Analysis", "📋 Investment Proposal"])
+tab1, tab2, tab3 = st.tabs(["📊 Portfolio Analysis", "📋 Investment Proposal", "💡 Stock Recommendations"])
 
 # -------------------------------------------------------
 # API Key Configuration
@@ -434,8 +434,8 @@ if not user_openai_key:
 # -------------------------------------------------------
 # Filters for Investment Proposal tab only
 # -------------------------------------------------------
-# Note: min_score is only used in tab2 (Investment Proposal)
-# It will be defined inside tab2 context
+# Note: min_score is used in tab3 (Stock Recommendations)
+# It will be defined inside tab3 context
 
 # -------------------------------------------------------
 # === Portfolio input & overview (NEW UI) ===
@@ -1137,19 +1137,49 @@ def get_ai_stock_recommendations_internal(portfolio_data, totals):
 def get_ai_selected_stocks_internal(portfolio_data, totals):
     """Get AI-selected stocks for analysis table (internal, uncached)"""
     try:
+        # Build detailed portfolio breakdown
+        portfolio_breakdown = "Current Portfolio Holdings:\n"
+        for _, row in portfolio_data.iterrows():
+            ticker = row['Ticker']
+            weight = row.get('Weight %', 0)
+            portfolio_breakdown += f"- {ticker}: {weight:.1f}% allocation\n"
+        
+        # Get sectors/industries from portfolio
+        sectors_in_portfolio = []
+        for _, row in portfolio_data.iterrows():
+            ticker = row['Ticker']
+            # Common sector mappings
+            if ticker in ['QQQ', 'PLUG']:
+                sectors_in_portfolio.append('Technology')
+            elif ticker in ['VTI', 'VEA']:
+                sectors_in_portfolio.append('Broad Market ETF')
+            elif ticker == 'BTC-USD':
+                sectors_in_portfolio.append('Cryptocurrency')
+            elif 'DE' in ticker:
+                sectors_in_portfolio.append('International/European')
+        
+        sectors_str = ', '.join(set(sectors_in_portfolio)) if sectors_in_portfolio else 'Mixed'
+        
         portfolio_summary = f"""
-        Current Portfolio: {len(portfolio_data)} positions, ${totals['Total Market Value']:,.0f} total value
+        Current Portfolio Analysis:
+        - Total Positions: {len(portfolio_data)}
+        - Total Value: ${totals['Total Market Value']:,.0f}
+        - Current Holdings: {portfolio_breakdown}
+        - Sectors Covered: {sectors_str}
         
-        Please select 10-15 specific stock tickers that would be most relevant for portfolio enhancement.
-        Focus on:
-        - Diversification opportunities
-        - Sector gaps in current portfolio
-        - Quality growth stocks
-        - Defensive positions if needed
-        - International opportunities
+        Based on this EXACT portfolio, select 10-15 specific stock tickers that would:
+        1. Fill sector gaps (avoid recommending stocks in sectors already well-represented)
+        2. Provide diversification beyond current holdings
+        3. Complement existing positions (e.g., if heavy in tech, suggest healthcare, consumer staples, or financials)
+        4. Offer quality growth or value opportunities
+        5. Include some defensive positions if portfolio is too aggressive
         
-        Return ONLY a comma-separated list of ticker symbols (e.g., AAPL,MSFT,GOOGL,TSLA,AMZN).
-        Use widely traded US stocks with good liquidity.
+        IMPORTANT: 
+        - Do NOT recommend stocks that are already in the portfolio
+        - Focus on sectors NOT well represented: {', '.join(set(sectors_in_portfolio)) if sectors_in_portfolio else 'any underrepresented sectors'}
+        - Vary recommendations based on portfolio composition
+        - Return ONLY a comma-separated list of ticker symbols (e.g., JNJ,PG,UNH,V,MA,XOM,CVX)
+        - Use widely traded US stocks with good liquidity
         """
         
         headers = {
@@ -1198,9 +1228,6 @@ def get_ai_selected_stocks_internal(portfolio_data, totals):
 with tab2:
     st.header("📋 Investment Proposal")
     st.markdown("Create a personalized investment strategy tailored to your goals and risk profile")
-    
-    # Filter for Investment Proposal tab only
-    min_score = st.sidebar.slider("Minimum Investment Score", 1, 100, 1, key="min_score_filter")
     
     # === Investment Strategy Generator (AT THE TOP) ===
     
@@ -1330,9 +1357,178 @@ with tab2:
                     result = response.json()
                     ai_strategy = result['choices'][0]['message']['content']
                     
-                    # Display the strategy
+                    # Display the strategy with enhanced formatting
                     st.markdown("### 🎉 Your Personalized Investment Strategy")
-                    st.markdown(ai_strategy)
+                    
+                    # Parse and display the strategy in a sophisticated way
+                    lines = ai_strategy.split('\n')
+                    current_section = None
+                    recommendations = []
+                    
+                    for line in lines:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        
+                        # Detect section headers
+                        if line.startswith('##'):
+                            current_section = line.replace('##', '').strip()
+                            if current_section:
+                                st.markdown(f"#### {current_section}")
+                                st.markdown("---")
+                        
+                        # Parse investment recommendations
+                        elif '**Ticker:**' in line or 'Ticker:' in line:
+                            # Extract recommendation data
+                            ticker_match = None
+                            name_match = None
+                            allocation_match = None
+                            rationale_match = None
+                            
+                            # Try different formats
+                            if '**Ticker:**' in line:
+                                parts = line.split('|')
+                                for part in parts:
+                                    part = part.strip()
+                                    if '**Ticker:**' in part:
+                                        ticker_match = part.replace('**Ticker:**', '').replace('**', '').strip()
+                                    elif '**Name:**' in part:
+                                        name_match = part.replace('**Name:**', '').replace('**', '').strip()
+                                    elif '**Allocation:**' in part:
+                                        allocation_match = part.replace('**Allocation:**', '').replace('**', '').replace('%', '').strip()
+                                    elif '**Rationale:**' in part:
+                                        rationale_match = part.replace('**Rationale:**', '').replace('**', '').strip()
+                            else:
+                                # Fallback parsing
+                                if 'Ticker:' in line:
+                                    try:
+                                        ticker_match = line.split('Ticker:')[1].split('|')[0].strip() if '|' in line else line.split('Ticker:')[1].split('Name:')[0].strip()
+                                        if 'Name:' in line:
+                                            name_match = line.split('Name:')[1].split('|')[0].strip() if '|' in line.split('Name:')[1] else line.split('Name:')[1].split('Allocation:')[0].strip()
+                                        if 'Allocation:' in line:
+                                            allocation_match = line.split('Allocation:')[1].split('%')[0].strip() if '%' in line else line.split('Allocation:')[1].split('|')[0].strip()
+                                        if 'Rationale:' in line:
+                                            rationale_match = line.split('Rationale:')[1].strip()
+                                    except:
+                                        pass
+                            
+                            if ticker_match:
+                                recommendations.append({
+                                    'ticker': ticker_match,
+                                    'name': name_match or 'N/A',
+                                    'allocation': allocation_match or '0',
+                                    'rationale': rationale_match or 'N/A'
+                                })
+                        
+                        # Display other content as regular markdown
+                        elif not line.startswith('##') and current_section:
+                            if 'INVESTMENT OVERVIEW' in current_section.upper() or 'OVERVIEW' in current_section.upper():
+                                st.info(f"💡 {line}")
+                            elif 'RECOMMENDED INVESTMENTS' not in current_section.upper():
+                                st.markdown(f"• {line}")
+                    
+                    # Display recommendations in beautiful cards
+                    if recommendations:
+                        st.markdown("---")
+                        st.markdown("### 📊 Recommended Portfolio Allocation")
+                        
+                        # Calculate total allocation
+                        total_alloc = sum([float(r.get('allocation', 0) or 0) for r in recommendations])
+                        
+                        # Create allocation pie chart
+                        if total_alloc > 0:
+                            alloc_data = pd.DataFrame(recommendations)
+                            alloc_data['allocation'] = pd.to_numeric(alloc_data['allocation'], errors='coerce').fillna(0)
+                            
+                            fig_alloc = px.pie(
+                                alloc_data,
+                                values='allocation',
+                                names='ticker',
+                                title="Portfolio Allocation Breakdown",
+                                hole=0.4
+                            )
+                            fig_alloc.update_traces(textposition='inside', textinfo='percent+label')
+                            fig_alloc.update_layout(margin=dict(l=20, r=20, t=40, b=20), height=400)
+                            st.plotly_chart(fig_alloc, use_container_width=True)
+                        
+                        # Display each recommendation in a beautiful card
+                        st.markdown("---")
+                        st.markdown("### 💼 Detailed Investment Recommendations")
+                        
+                        for i, rec in enumerate(recommendations, 1):
+                            alloc_pct = float(rec.get('allocation', 0) or 0)
+                            
+                            # Create a sophisticated card layout
+                            col1, col2 = st.columns([1, 3])
+                            
+                            with col1:
+                                st.markdown(f"""
+                                    <div style="
+                                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                                        padding: 25px;
+                                        border-radius: 15px;
+                                        text-align: center;
+                                        color: white;
+                                        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+                                        margin-bottom: 20px;
+                                    ">
+                                        <h2 style="margin: 0; font-size: 2.5em; font-weight: bold;">{i}</h2>
+                                        <h3 style="margin: 10px 0 5px 0; font-size: 1.3em;">{rec.get('ticker', 'N/A')}</h3>
+                                        <div style="
+                                            background: rgba(255,255,255,0.2);
+                                            padding: 10px;
+                                            border-radius: 10px;
+                                            margin-top: 15px;
+                                        ">
+                                            <p style="margin: 0; font-size: 0.9em; opacity: 0.9;">Allocation</p>
+                                            <p style="margin: 5px 0 0 0; font-size: 1.8em; font-weight: bold;">{alloc_pct:.0f}%</p>
+                                        </div>
+                                    </div>
+                                """, unsafe_allow_html=True)
+                            
+                            with col2:
+                                st.markdown(f"""
+                                    <div style="
+                                        background: white;
+                                        padding: 25px;
+                                        border-radius: 15px;
+                                        border-left: 5px solid #667eea;
+                                        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+                                        margin-bottom: 20px;
+                                    ">
+                                        <h3 style="margin: 0 0 10px 0; color: #333; font-size: 1.4em;">
+                                            {rec.get('name', 'N/A')}
+                                        </h3>
+                                        <p style="margin: 15px 0; color: #666; line-height: 1.6; font-size: 1.05em;">
+                                            <strong style="color: #667eea;">Investment Rationale:</strong><br>
+                                            {rec.get('rationale', 'N/A')}
+                                        </p>
+                                    </div>
+                                """, unsafe_allow_html=True)
+                        
+                        # Summary metrics
+                        st.markdown("---")
+                        st.markdown("### 📈 Strategy Summary")
+                        
+                        col1, col2, col3, col4 = st.columns(4)
+                        
+                        with col1:
+                            st.metric("📊 Total Holdings", len(recommendations))
+                        
+                        with col2:
+                            st.metric("💰 Total Allocation", f"{total_alloc:.0f}%")
+                        
+                        with col3:
+                            avg_alloc = total_alloc / len(recommendations) if recommendations else 0
+                            st.metric("📊 Avg. Position Size", f"{avg_alloc:.1f}%")
+                        
+                        with col4:
+                            investment_total = investment_amount
+                            st.metric("💵 Investment Amount", f"${investment_total:,.0f}")
+                    
+                    # Also show the raw strategy text in an expander for reference
+                    with st.expander("📄 View Full Strategy Text", expanded=False):
+                        st.markdown(ai_strategy)
                     
                     # Add download button
                     @st.cache_data
@@ -1350,8 +1546,12 @@ with tab2:
                     
             except Exception as e:
                 st.error(f"Error generating strategy: {str(e)}")
-    
-    st.markdown("---")
+
+# -------------------------------------------------------
+# Tab 3: Stock Recommendations
+with tab3:
+    st.header("💡 Stock Recommendations")
+    st.markdown("AI-powered stock analysis and recommendations based on your portfolio")
     
     # === AI-Selected Stock Analysis Table (Enhanced Screener) ===
     if not portfolio_input.empty:
@@ -1378,16 +1578,31 @@ with tab2:
         # Get AI-selected stocks - use cache from Supabase unless forced refresh
         current_hash_for_stocks = get_portfolio_hash(st.session_state.manual_positions)
         
+        # Filter for Stock Recommendations tab
+        min_score = st.slider("Minimum Investment Score", 1, 100, 1, key="min_score_stock_recs")
+        
+        # Add refresh button for AI-selected stocks
+        col_refresh_stocks1, col_refresh_stocks2 = st.columns([1, 4])
+        with col_refresh_stocks1:
+            if st.button("🔄 Refresh Stock Selection", help="Generate new AI-selected stocks based on your current portfolio", key="refresh_stocks_tab3"):
+                st.session_state.force_refresh_recommendations = True
+                st.rerun()
+        with col_refresh_stocks2:
+            st.caption("💡 AI selects stocks based on your portfolio. Click refresh to get new selections.")
+        
         cached_selected_stocks = None
         if not st.session_state.force_refresh_recommendations:
             cached_selected_stocks = get_cached_recommendation('selected_stocks', current_hash_for_stocks)
         
         if cached_selected_stocks:
             ai_selected_stocks = cached_selected_stocks.split(',')
+            st.info(f"📦 Using cached stock selection ({len(ai_selected_stocks)} stocks). Click 'Refresh Stock Selection' above to get new AI recommendations based on your current portfolio.")
         else:
-            ai_selected_stocks = get_ai_selected_stocks_internal(port, totals)
-            # Save to Supabase cache
-            save_recommendation_to_supabase('selected_stocks', current_hash_for_stocks, ','.join(ai_selected_stocks))
+            with st.spinner("🤖 AI is analyzing your portfolio and selecting relevant stocks..."):
+                ai_selected_stocks = get_ai_selected_stocks_internal(port, totals)
+                # Save to Supabase cache
+                save_recommendation_to_supabase('selected_stocks', current_hash_for_stocks, ','.join(ai_selected_stocks))
+                st.success(f"✅ Generated {len(ai_selected_stocks)} AI-selected stocks based on your portfolio!")
         
         # Analysis logic (same as before but with AI-selected stocks)
         price_data = {}
