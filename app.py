@@ -277,8 +277,9 @@ def save_portfolio_to_supabase(positions: list):
         # Error already shown in get_supabase_client
         return
     try:
-        # Delete all existing positions
-        supabase_client.table('portfolio_positions').delete().execute()
+        # Delete all existing positions (using WHERE clause as required by Supabase)
+        # Using .neq("id", 0) which matches all rows since id is bigserial starting from 1
+        supabase_client.table('portfolio_positions').delete().neq("id", 0).execute()
         
         # Insert new positions
         if positions:

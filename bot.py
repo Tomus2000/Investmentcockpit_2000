@@ -40,6 +40,13 @@ FINNHUB_API_KEY = get_env_var("FINNHUB_API_KEY", "")
 SUPABASE_URL = get_env_var("SUPABASE_URL", "")
 SUPABASE_KEY = get_env_var("SUPABASE_KEY", "")
 
+# Setup logging FIRST (before any logger calls)
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
 # Your Telegram user ID (get this by messaging @userinfobot)
 TELEGRAM_USER_ID = get_env_var("TELEGRAM_USER_ID", "")
 if TELEGRAM_USER_ID:
@@ -47,17 +54,17 @@ if TELEGRAM_USER_ID:
         TELEGRAM_USER_ID = int(TELEGRAM_USER_ID)
     except ValueError:
         TELEGRAM_USER_ID = None
-        logging.warning("TELEGRAM_USER_ID must be a valid integer")
+        logger.warning("TELEGRAM_USER_ID must be a valid integer")
 
 # Validate required environment variables
 if not OPENAI_API_KEY:
-    logging.error("OPENAI_API_KEY not found in environment variables")
+    logger.error("OPENAI_API_KEY not found in environment variables")
 if not TELEGRAM_BOT_TOKEN:
-    logging.error("TELEGRAM_BOT_TOKEN not found in environment variables")
+    logger.error("TELEGRAM_BOT_TOKEN not found in environment variables")
 if not FINNHUB_API_KEY:
-    logging.warning("FINNHUB_API_KEY not found in environment variables")
+    logger.warning("FINNHUB_API_KEY not found in environment variables")
 if not SUPABASE_URL or not SUPABASE_KEY:
-    logging.error("Supabase credentials not found in environment variables")
+    logger.error("Supabase credentials not found in environment variables")
 
 # Lisbon timezone
 LISBON_TZ = pytz.timezone('Europe/Lisbon')
@@ -112,14 +119,7 @@ def get_supabase_client() -> Optional[Client]:
         logger.error(traceback.format_exc())
         return None
 
-supabase: Optional[Client] = get_supabase_client()
-
-# Setup logging
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
+# Supabase client will be created on demand (not at module level)
 
 # OpenAI API configuration (using requests instead of openai module)
 
