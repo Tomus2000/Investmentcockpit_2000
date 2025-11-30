@@ -416,28 +416,6 @@ st.markdown("""
 tab1, tab2 = st.tabs(["📊 Portfolio Analysis", "📋 Investment Proposal"])
 
 # -------------------------------------------------------
-# Debug Mode (outside cached functions)
-# -------------------------------------------------------
-debug_supabase = st.sidebar.checkbox("🔍 Debug Supabase Connection", value=False)
-if debug_supabase:
-    st.sidebar.write("**DEBUG INFO:**")
-    st.sidebar.write(f"URL present: {bool(SUPABASE_URL)}")
-    st.sidebar.write(f"KEY present: {bool(SUPABASE_KEY)}")
-    if SUPABASE_URL:
-        st.sidebar.write(f"URL: `{SUPABASE_URL[:50]}...`")
-    if SUPABASE_KEY:
-        st.sidebar.write(f"KEY prefix: `{SUPABASE_KEY[:20]}...`")
-    # Try direct access to see what Streamlit has
-    try:
-        if hasattr(st, 'secrets'):
-            direct_url = st.secrets.get("SUPABASE_URL", "NOT_FOUND")
-            direct_key = st.secrets.get("SUPABASE_KEY", "NOT_FOUND")
-            st.sidebar.write(f"Direct URL: `{str(direct_url)[:50]}...`")
-            st.sidebar.write(f"Direct KEY: `{str(direct_key)[:20]}...`")
-    except:
-        st.sidebar.write("Could not access st.secrets directly")
-
-# -------------------------------------------------------
 # API Key Configuration
 # -------------------------------------------------------
 st.sidebar.header("🔑 API Configuration")
@@ -844,19 +822,7 @@ with tab1:
             st.error(f"Error generating portfolio comparison: {str(e)}")
             st.info("Please try a different time period or check your portfolio data.")
 
-        # === AI Portfolio Analysis ===
-        st.header("🤖 AI Portfolio Analysis")
-        
-        # Refresh button for AI recommendations
-        col_refresh1, col_refresh2 = st.columns([1, 4])
-        with col_refresh1:
-            if st.button("🔄 Refresh AI Analysis", help="Generate new AI recommendations (uses OpenAI API credits)"):
-                st.session_state.force_refresh_recommendations = True
-                st.rerun()
-        with col_refresh2:
-            st.caption("💡 AI recommendations are cached to save costs. Click refresh to get new analysis.")
-        
-        def get_ai_portfolio_analysis_internal(portfolio_data, current_prices, totals):
+        # AI Portfolio Analysis removed - now only in Investment Proposal tab
             """Generate AI-powered portfolio analysis using OpenAI API (internal, uncached)"""
             try:
                 # Prepare portfolio summary for AI
@@ -1152,243 +1118,7 @@ def get_ai_stock_recommendations_internal(portfolio_data, totals):
     except Exception as e:
         return f"Error generating recommendations: {str(e)}"
 
-# Generate recommendations - use cache from Supabase unless forced refresh
-st.markdown("### 🚀 AI Stock Recommendations")
-
-# Check for cached recommendation first
-cached_recommendations = None
-if not st.session_state.force_refresh_recommendations:
-    cached_recommendations = get_cached_recommendation('stock_recommendations', current_hash)
-
-if cached_recommendations:
-    st.info("📦 Using cached recommendations (portfolio unchanged). Click 'Refresh AI Analysis' above for new recommendations.")
-    ai_recommendations = cached_recommendations
-else:
-    with st.spinner("🤖 AI is analyzing your portfolio and generating tailored recommendations..."):
-        ai_recommendations = get_ai_stock_recommendations_internal(port, totals)
-        # Save to Supabase cache
-        save_recommendation_to_supabase('stock_recommendations', current_hash, ai_recommendations)
-        st.success("✅ New stock recommendations generated and cached!")
-        
-st.markdown("### 💡 Personalized Stock Recommendations")
-
-# Parse recommendations into structured data
-recommendations = []
-current_rec = {}
-
-# Parse recommendations - handle both formats
-lines = ai_recommendations.split('\n')
-for line in lines:
-    line = line.strip()
-    if 'Ticker Symbol:' in line:
-        if current_rec:
-            recommendations.append(current_rec)
-        
-        # Parse the entire line which contains all fields
-        # Format: "Ticker Symbol: JNJ Company Name: Johnson & Johnson Sector/Industry: Healthcare Investment Thesis: ... Suggested Allocation: 10% Risk Level: Low Time Horizon: Long-term Key Catalysts: ..."
-        
-        # Extract ticker
-        ticker_match = line.split('Company Name:')[0].replace('Ticker Symbol:', '').strip()
-        
-        # Extract company name
-        company_match = line.split('Sector/Industry:')[0].split('Company Name:')[1].strip() if 'Company Name:' in line else 'N/A'
-        
-        # Extract sector
-        sector_match = line.split('Investment Thesis:')[0].split('Sector/Industry:')[1].strip() if 'Sector/Industry:' in line else 'N/A'
-        
-        # Extract investment thesis
-        thesis_match = line.split('Suggested Allocation:')[0].split('Investment Thesis:')[1].strip() if 'Investment Thesis:' in line else 'N/A'
-        
-        # Extract allocation
-        allocation_match = line.split('Risk Level:')[0].split('Suggested Allocation:')[1].strip() if 'Suggested Allocation:' in line else 'N/A'
-        
-        # Extract risk level
-        risk_match = line.split('Time Horizon:')[0].split('Risk Level:')[1].strip() if 'Risk Level:' in line else 'N/A'
-        
-        # Extract time horizon
-        horizon_match = line.split('Key Catalysts:')[0].split('Time Horizon:')[1].strip() if 'Time Horizon:' in line else 'N/A'
-        
-        # Extract catalysts
-        catalysts_match = line.split('Key Catalysts:')[1].strip() if 'Key Catalysts:' in line else 'N/A'
-        
-        
-        current_rec = {
-            'ticker': ticker_match,
-            'company': company_match,
-            'sector': sector_match,
-            'thesis': thesis_match,
-            'allocation': allocation_match,
-            'risk': risk_match,
-            'horizon': horizon_match,
-            'catalysts': catalysts_match
-        }
-
-if current_rec:
-    recommendations.append(current_rec)
-
-
-# If no recommendations were parsed, show the raw text with a note
-if len(recommendations) == 0:
-    if "API Error" in ai_recommendations or "Error generating" in ai_recommendations:
-        st.error(f"❌ {ai_recommendations}")
-        st.info("💡 **Troubleshooting Tips:**")
-        st.markdown("""
-        - **Check your internet connection**
-        - **Verify your OpenAI API key is valid**
-        - **Try again in a few moments** (API may be temporarily overloaded)
-        - **Consider upgrading to OpenAI Pro** for better reliability
-        """)
-        
-        # Show fallback recommendations
-        st.markdown("### 🔄 Fallback Recommendations")
-        st.info("While the AI is unavailable, here are some general portfolio enhancement suggestions:")
-        
-        fallback_recs = [
-            {"ticker": "VTI", "company": "Vanguard Total Stock Market ETF", "sector": "Diversified ETF", "thesis": "Broad market exposure for diversification", "allocation": "10%", "risk": "Low", "horizon": "Long-term", "catalysts": "Market recovery and growth"},
-            {"ticker": "VXUS", "company": "Vanguard Total International Stock ETF", "sector": "International ETF", "thesis": "International diversification", "allocation": "8%", "risk": "Medium", "horizon": "Long-term", "catalysts": "Global economic recovery"},
-            {"ticker": "BND", "company": "Vanguard Total Bond Market ETF", "sector": "Bond ETF", "thesis": "Fixed income stability", "allocation": "5%", "risk": "Low", "horizon": "Long-term", "catalysts": "Interest rate stability"},
-            {"ticker": "XLK", "company": "Technology Select Sector SPDR Fund", "sector": "Technology ETF", "thesis": "Technology sector exposure", "allocation": "7%", "risk": "Medium", "horizon": "Medium-term", "catalysts": "AI and digital transformation"},
-        ]
-        
-        # Display fallback recommendations in simple format
-        for rec in fallback_recs:
-            st.markdown(f"**{rec['ticker']}** - {rec['company']} | {rec['sector']} | {rec['allocation']} allocation | {rec['risk']} risk")
-            st.markdown(f"*{rec['thesis']}*")
-            st.markdown("---")
-    else:
-        st.warning("⚠️ Could not parse structured recommendations. Showing raw AI response:")
-        st.markdown(ai_recommendations)
-        st.info("💡 The AI response format may need adjustment. The recommendations are still valuable - just not in the structured format.")
-
-# Create beautiful cards for each recommendation (if we have them)
-if len(recommendations) > 0:
-    for i, rec in enumerate(recommendations):
-        # Risk level colors
-        risk_colors = {
-            'Low': '🟢',
-            'Medium': '🟡', 
-            'High': '🔴'
-        }
-        
-        risk_color = risk_colors.get(rec.get('risk', 'Medium'), '🟡')
-        
-        # Create columns for layout
-        col1, col2, col3 = st.columns([2, 1, 1])
-        
-        with col1:
-            st.markdown(f"""
-                    <div style="
-                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                        padding: 20px;
-                        border-radius: 15px;
-                        margin: 10px 0;
-                        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-                        color: white;
-                    ">
-                        <h4 style="margin: 0 0 10px 0; font-size: 1.4em;">
-                            📈 {rec.get('ticker', 'N/A')} - {rec.get('company', 'N/A')}
-                        </h4>
-                        <p style="margin: 5px 0; opacity: 0.9;">
-                            <strong>🏢 Sector:</strong> {rec.get('sector', 'N/A')}
-                        </p>
-                        <p style="margin: 5px 0; opacity: 0.9;">
-                            <strong>💡 Thesis:</strong> {rec.get('thesis', 'N/A')}
-                        </p>
-                        <p style="margin: 5px 0; opacity: 0.9;">
-                            <strong>🚀 Catalysts:</strong> {rec.get('catalysts', 'N/A')}
-                        </p>
-                    </div>
-                    """, unsafe_allow_html=True)
-        
-        with col2:
-            st.markdown(f"""
-                    <div style="
-                        background: white;
-                        padding: 20px;
-                        border-radius: 15px;
-                        margin: 10px 0;
-                        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-                        border-left: 5px solid #667eea;
-                        text-align: center;
-                    ">
-                        <h5 style="margin: 0 0 10px 0; color: #333;">📊 Allocation</h5>
-                        <h3 style="margin: 0; color: #667eea;">{rec.get('allocation', 'N/A')}</h3>
-                    </div>
-                    """, unsafe_allow_html=True)
-        
-        with col3:
-            st.markdown(f"""
-                    <div style="
-                        background: white;
-                        padding: 20px;
-                        border-radius: 15px;
-                        margin: 10px 0;
-                        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-                        border-left: 5px solid #764ba2;
-                        text-align: center;
-                    ">
-                        <h5 style="margin: 0 0 10px 0; color: #333;">⚠️ Risk</h5>
-                        <h3 style="margin: 0; color: #764ba2;">{risk_color} {rec.get('risk', 'N/A')}</h3>
-                        <p style="margin: 5px 0 0 0; font-size: 0.9em; color: #666;">
-                            {rec.get('horizon', 'N/A')}
-                        </p>
-                    </div>
-                    """, unsafe_allow_html=True)
-        
-        # Enhanced summary metrics (only show if we have recommendations)
-        if len(recommendations) > 0:
-            st.markdown("---")
-            
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                st.metric("🎯 Total Recommendations", "3")
-            
-            with col2:
-                avg_risk = len([r for r in recommendations if r.get('risk') == 'Low']) / len(recommendations) * 100
-                st.metric("🟢 Low Risk Ratio", f"{avg_risk:.0f}%")
-            
-            with col3:
-                try:
-                    total_allocation = 0
-                    for r in recommendations:
-                        alloc_str = r.get('allocation', '0%')
-                        if isinstance(alloc_str, str) and '%' in alloc_str:
-                            alloc_value = float(alloc_str.replace('%', ''))
-                            total_allocation += alloc_value
-                    st.metric("📊 Total Allocation", f"{total_allocation:.0f}%")
-                except (ValueError, TypeError):
-                    st.metric("📊 Total Allocation", "N/A")
-            
-            with col4:
-                sectors = len(set([r.get('sector', '').split('/')[0] for r in recommendations]))
-                st.metric("🏢 Sector Diversity", f"{sectors} sectors")
-        
-        # Display recommendations directly
-        filtered_recs = recommendations
-        
-        # Download functionality removed to prevent duplicate key errors
-        
-        # Recommendation analytics removed to prevent duplicate key errors
-        
-        # Add recommendation summary
-        st.markdown("---")
-        st.markdown("### 📊 Recommendation Summary")
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.metric("🎯 AI Analysis", "Portfolio-Based", "Tailored Recommendations")
-        
-        with col2:
-            current_concentration = port['Weight %'].max()
-            st.metric("⚠️ Current Risk", f"{current_concentration:.1f}%", "Largest Position")
-        
-        with col3:
-            total_positions = len(port)
-            st.metric("📈 Portfolio Size", f"{total_positions} positions", "Diversification Status")
-        
-# AI Stock Recommendations are now always visible above
+# AI Stock Recommendations moved to Investment Proposal tab (tab2) - see tab2 section below
 
 # -------------------------------------------------------
 # AI-Selected Stock Analysis Table (Enhanced Screener)
@@ -1662,6 +1392,209 @@ with tab2:
     
     # Filter for Investment Proposal tab only
     min_score = st.sidebar.slider("Minimum Investment Score", 1, 100, 1, key="min_score_filter")
+    
+    # === AI Stock Recommendations (based on current portfolio) ===
+    if not portfolio_input.empty:
+        st.markdown("---")
+        st.markdown("### 🚀 AI Stock Recommendations")
+        
+        # Refresh button for AI recommendations
+        col_refresh1, col_refresh2 = st.columns([1, 4])
+        with col_refresh1:
+            if st.button("🔄 Refresh Recommendations", help="Generate new AI recommendations (uses OpenAI API credits)", key="refresh_recs_tab2"):
+                st.session_state.force_refresh_recommendations = True
+                st.rerun()
+        with col_refresh2:
+            st.caption("💡 AI recommendations are cached to save costs. Click refresh to get new analysis.")
+        
+        # Check for cached recommendation first
+        current_hash = get_portfolio_hash(st.session_state.manual_positions)
+        cached_recommendations = None
+        if not st.session_state.force_refresh_recommendations:
+            cached_recommendations = get_cached_recommendation('stock_recommendations', current_hash)
+        
+        if cached_recommendations:
+            st.info("📦 Using cached recommendations (portfolio unchanged). Click 'Refresh Recommendations' above for new recommendations.")
+            ai_recommendations = cached_recommendations
+        else:
+            with st.spinner("🤖 AI is analyzing your portfolio and generating tailored recommendations..."):
+                ai_recommendations = get_ai_stock_recommendations_internal(port, totals)
+                # Save to Supabase cache
+                save_recommendation_to_supabase('stock_recommendations', current_hash, ai_recommendations)
+                st.success("✅ New stock recommendations generated and cached!")
+        
+        st.markdown("### 💡 Personalized Stock Recommendations")
+        
+        # Parse recommendations into structured data
+        recommendations = []
+        current_rec = {}
+        
+        # Parse recommendations - handle both formats
+        lines = ai_recommendations.split('\n')
+        for line in lines:
+            line = line.strip()
+            if 'Ticker Symbol:' in line:
+                if current_rec:
+                    recommendations.append(current_rec)
+                
+                # Extract ticker
+                ticker_match = line.split('Company Name:')[0].replace('Ticker Symbol:', '').strip()
+                
+                # Extract company name
+                company_match = line.split('Sector/Industry:')[0].split('Company Name:')[1].strip() if 'Company Name:' in line else 'N/A'
+                
+                # Extract sector
+                sector_match = line.split('Investment Thesis:')[0].split('Sector/Industry:')[1].strip() if 'Sector/Industry:' in line else 'N/A'
+                
+                # Extract investment thesis
+                thesis_match = line.split('Suggested Allocation:')[0].split('Investment Thesis:')[1].strip() if 'Investment Thesis:' in line else 'N/A'
+                
+                # Extract allocation
+                allocation_match = line.split('Risk Level:')[0].split('Suggested Allocation:')[1].strip() if 'Suggested Allocation:' in line else 'N/A'
+                
+                # Extract risk level
+                risk_match = line.split('Time Horizon:')[0].split('Risk Level:')[1].strip() if 'Risk Level:' in line else 'N/A'
+                
+                # Extract time horizon
+                horizon_match = line.split('Key Catalysts:')[0].split('Time Horizon:')[1].strip() if 'Time Horizon:' in line else 'N/A'
+                
+                # Extract catalysts
+                catalysts_match = line.split('Key Catalysts:')[1].strip() if 'Key Catalysts:' in line else 'N/A'
+                
+                current_rec = {
+                    'ticker': ticker_match,
+                    'company': company_match,
+                    'sector': sector_match,
+                    'thesis': thesis_match,
+                    'allocation': allocation_match,
+                    'risk': risk_match,
+                    'horizon': horizon_match,
+                    'catalysts': catalysts_match
+                }
+        
+        if current_rec:
+            recommendations.append(current_rec)
+        
+        # If no recommendations were parsed, show the raw text with a note
+        if len(recommendations) == 0:
+            if "API Error" in ai_recommendations or "Error generating" in ai_recommendations:
+                st.error(f"❌ {ai_recommendations}")
+                st.info("💡 **Troubleshooting Tips:**")
+                st.markdown("""
+                - **Check your internet connection**
+                - **Verify your OpenAI API key is valid**
+                - **Try again in a few moments** (API may be temporarily overloaded)
+                - **Consider upgrading to OpenAI Pro** for better reliability
+                """)
+            else:
+                st.warning("⚠️ Could not parse structured recommendations. Showing raw AI response:")
+                st.markdown(ai_recommendations)
+        
+        # Create beautiful cards for each recommendation (if we have them)
+        if len(recommendations) > 0:
+            for i, rec in enumerate(recommendations):
+                # Risk level colors
+                risk_colors = {
+                    'Low': '🟢',
+                    'Medium': '🟡', 
+                    'High': '🔴'
+                }
+                
+                risk_color = risk_colors.get(rec.get('risk', 'Medium'), '🟡')
+                
+                # Create columns for layout
+                col1, col2, col3 = st.columns([2, 1, 1])
+                
+                with col1:
+                    st.markdown(f"""
+                            <div style="
+                                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                                padding: 20px;
+                                border-radius: 15px;
+                                margin: 10px 0;
+                                box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+                                color: white;
+                            ">
+                                <h4 style="margin: 0 0 10px 0; font-size: 1.4em;">
+                                    📈 {rec.get('ticker', 'N/A')} - {rec.get('company', 'N/A')}
+                                </h4>
+                                <p style="margin: 5px 0; opacity: 0.9;">
+                                    <strong>🏢 Sector:</strong> {rec.get('sector', 'N/A')}
+                                </p>
+                                <p style="margin: 5px 0; opacity: 0.9;">
+                                    <strong>💡 Thesis:</strong> {rec.get('thesis', 'N/A')}
+                                </p>
+                                <p style="margin: 5px 0; opacity: 0.9;">
+                                    <strong>🚀 Catalysts:</strong> {rec.get('catalysts', 'N/A')}
+                                </p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                
+                with col2:
+                    st.markdown(f"""
+                            <div style="
+                                background: white;
+                                padding: 20px;
+                                border-radius: 15px;
+                                margin: 10px 0;
+                                box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+                                border-left: 5px solid #667eea;
+                                text-align: center;
+                            ">
+                                <h5 style="margin: 0 0 10px 0; color: #333;">📊 Allocation</h5>
+                                <h3 style="margin: 0; color: #667eea;">{rec.get('allocation', 'N/A')}</h3>
+                            </div>
+                            """, unsafe_allow_html=True)
+                
+                with col3:
+                    st.markdown(f"""
+                            <div style="
+                                background: white;
+                                padding: 20px;
+                                border-radius: 15px;
+                                margin: 10px 0;
+                                box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+                                border-left: 5px solid #764ba2;
+                                text-align: center;
+                            ">
+                                <h5 style="margin: 0 0 10px 0; color: #333;">⚠️ Risk</h5>
+                                <h3 style="margin: 0; color: #764ba2;">{risk_color} {rec.get('risk', 'N/A')}</h3>
+                                <p style="margin: 5px 0 0 0; font-size: 0.9em; color: #666;">
+                                    {rec.get('horizon', 'N/A')}
+                                </p>
+                            </div>
+                            """, unsafe_allow_html=True)
+            
+            # Summary metrics
+            st.markdown("---")
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric("🎯 Total Recommendations", len(recommendations))
+            
+            with col2:
+                avg_risk = len([r for r in recommendations if r.get('risk') == 'Low']) / len(recommendations) * 100 if recommendations else 0
+                st.metric("🟢 Low Risk Ratio", f"{avg_risk:.0f}%")
+            
+            with col3:
+                try:
+                    total_allocation = 0
+                    for r in recommendations:
+                        alloc_str = r.get('allocation', '0%')
+                        if isinstance(alloc_str, str) and '%' in alloc_str:
+                            alloc_value = float(alloc_str.replace('%', ''))
+                            total_allocation += alloc_value
+                    st.metric("📊 Total Allocation", f"{total_allocation:.0f}%")
+                except (ValueError, TypeError):
+                    st.metric("📊 Total Allocation", "N/A")
+            
+            with col4:
+                sectors = len(set([r.get('sector', '').split('/')[0] for r in recommendations]))
+                st.metric("🏢 Sector Diversity", f"{sectors} sectors")
+        
+        st.markdown("---")
+    
+    # === Investment Strategy Generator ===
     
     # Investment amount input
     col_amount, col_risk = st.columns(2)
