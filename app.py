@@ -1555,8 +1555,6 @@ with tab3:
     
     # === AI-Selected Stock Analysis Table (Enhanced Screener) ===
     if not portfolio_input.empty:
-        st.markdown("---")
-        st.header("📊 AI-Selected Stock Analysis")
         
         # Get portfolio data for analysis
         current_px = fetch_current_prices(portfolio_input["Ticker"].unique().tolist())
