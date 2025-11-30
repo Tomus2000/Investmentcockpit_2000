@@ -270,12 +270,12 @@ def load_portfolio_from_supabase() -> list:
             st.sidebar.warning(f"Could not load portfolio from Supabase: {e}")
     return []
 
-def save_portfolio_to_supabase(positions: list):
+def save_portfolio_to_supabase(positions: list, show_success: bool = False):
     """Save portfolio positions to Supabase"""
     supabase_client = get_supabase_client()
     if not supabase_client:
         # Error already shown in get_supabase_client
-        return
+        return False
     try:
         # Delete all existing positions (using WHERE clause as required by Supabase)
         # Using .neq("id", 0) which matches all rows since id is bigserial starting from 1
@@ -286,6 +286,14 @@ def save_portfolio_to_supabase(positions: list):
             rows = [{"ticker": p['Ticker'], "buy_price": float(p['Buy Price']), "quantity": float(p['Quantity'])} 
                     for p in positions]
             supabase_client.table('portfolio_positions').insert(rows).execute()
+            if show_success:
+                st.sidebar.success(f"✅ Saved {len(positions)} positions to Supabase!")
+            return True
+        else:
+            # Empty portfolio - still saved (deleted all)
+            if show_success:
+                st.sidebar.info("✅ Cleared portfolio in Supabase")
+            return True
     except Exception as e:
         error_msg = str(e)
         # Check if table doesn't exist
@@ -293,10 +301,12 @@ def save_portfolio_to_supabase(positions: list):
             st.error("📋 **Database Table Missing**")
             st.error("The `portfolio_positions` table doesn't exist. Please run the SQL setup script in Supabase.")
             st.info("💡 See the error message above for instructions on how to create the table.")
-            return
+            return False
         # Don't show error if it's just authentication (already shown in get_supabase_client)
         elif "401" not in error_msg and "Invalid API key" not in error_msg and "Unauthorized" not in error_msg:
-            st.sidebar.warning(f"Could not save portfolio to Supabase: {e}")
+            st.sidebar.error(f"❌ Could not save portfolio to Supabase: {e}")
+            return False
+        return False
 
 def get_cached_recommendation(rec_type: str, portfolio_hash: str) -> str | None:
     """Get cached AI recommendation from Supabase"""
@@ -466,6 +476,7 @@ if "manual_positions" not in st.session_state:
     loaded_positions = load_portfolio_from_supabase()
     if loaded_positions:
         st.session_state.manual_positions = loaded_positions
+        st.session_state.portfolio_loaded_from_supabase = True
     else:
         # Default portfolio - PlugPower, Nasdaq ETF, MSCI World ETF, Asia Pacific ETF, Bitcoin, and RHM.de
         st.session_state.manual_positions = [
@@ -476,8 +487,22 @@ if "manual_positions" not in st.session_state:
             {"Ticker": "BTC-USD", "Buy Price": 98000, "Quantity": 0.051},
             {"Ticker": "RHM.DE", "Buy Price": 1587.50, "Quantity": 11}
         ]
-        # Save default portfolio to Supabase
-        save_portfolio_to_supabase(st.session_state.manual_positions)
+        st.session_state.portfolio_loaded_from_supabase = False
+        # Save default portfolio to Supabase (silently, no success message on initial load)
+        save_portfolio_to_supabase(st.session_state.manual_positions, show_success=False)
+
+# Auto-save current portfolio to Supabase if it exists but wasn't loaded from Supabase
+if "portfolio_loaded_from_supabase" not in st.session_state:
+    st.session_state.portfolio_loaded_from_supabase = False
+
+# If we have positions but they weren't loaded from Supabase, offer to save them
+if (st.session_state.manual_positions and 
+    not st.session_state.portfolio_loaded_from_supabase and 
+    "portfolio_auto_saved" not in st.session_state):
+    # Try to auto-save once
+    if save_portfolio_to_supabase(st.session_state.manual_positions, show_success=False):
+        st.session_state.portfolio_auto_saved = True
+        st.session_state.portfolio_loaded_from_supabase = True
 
 # Track portfolio hash for detecting changes
 if "portfolio_hash" not in st.session_state:
@@ -554,6 +579,13 @@ if st.session_state.manual_positions:
         st.sidebar.markdown(
             f"- **{p['Ticker']}** — Qty: {p['Quantity']:.2f} @ {p['Buy Price']:.2f}"
         )
+    
+    # Save to Supabase button
+    st.sidebar.markdown("---")
+    if st.sidebar.button("💾 Save Portfolio to Supabase", use_container_width=True, type="primary"):
+        success = save_portfolio_to_supabase(st.session_state.manual_positions, show_success=True)
+        if success:
+            st.session_state.portfolio_hash = get_portfolio_hash(st.session_state.manual_positions)
 
 # Normalization helpers
 def _clean_portfolio(df: pd.DataFrame) -> pd.DataFrame:

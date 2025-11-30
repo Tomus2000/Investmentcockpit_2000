@@ -88,15 +88,24 @@ async def test_messages():
         supabase_client = get_supabase_client()
         if supabase_client:
             print("✅ Supabase client created")
+            print("📊 Loading portfolio from Supabase...")
             portfolio = load_portfolio_from_supabase()
             print(f"✅ Portfolio loaded: {len(portfolio)} positions")
-            if not portfolio:
+            if portfolio:
+                print("📋 Portfolio positions:")
+                for pos in portfolio:
+                    print(f"   - {pos['Ticker']}: {pos['Quantity']} @ ${pos['Buy Price']:.2f}")
+            else:
                 print("⚠️ Warning: No portfolio positions found in Supabase")
+                print("   💡 Add positions in Streamlit app first, then try again")
                 print("   The bot will still send a message about this.")
         else:
-            print("⚠️ Supabase client not available (check credentials)")
+            print("❌ Supabase client not available (check credentials)")
+            print("   💡 Verify SUPABASE_URL and SUPABASE_KEY in GitHub Secrets")
     except Exception as e:
-        print(f"⚠️ Supabase test failed: {e}")
+        print(f"❌ Supabase test failed: {e}")
+        import traceback
+        traceback.print_exc()
         print("   Continuing anyway...")
     
     # Create bot application

@@ -133,26 +133,40 @@ def load_portfolio_from_supabase() -> List[Dict]:
     
     try:
         logger.info("Fetching portfolio from Supabase...")
+        logger.info(f"Using Supabase URL: {SUPABASE_URL[:30]}..." if SUPABASE_URL else "No URL")
+        logger.info(f"Using Supabase Key: {SUPABASE_KEY[:20]}..." if SUPABASE_KEY else "No Key")
+        
         response = client.table('portfolio_positions').select('*').execute()
         
         logger.info(f"Supabase response received. Has data: {bool(response.data)}, Count: {len(response.data) if response.data else 0}")
         
         if response.data and len(response.data) > 0:
+            logger.info(f"Raw response data sample: {response.data[0] if response.data else 'None'}")
             portfolio = []
             for row in response.data:
                 try:
+                    ticker = str(row.get('ticker', '')).strip()
+                    buy_price = float(row.get('buy_price', 0))
+                    quantity = float(row.get('quantity', 0))
+                    
+                    logger.info(f"Processing row: ticker={ticker}, buy_price={buy_price}, quantity={quantity}")
+                    
                     portfolio.append({
-                        "Ticker": str(row.get('ticker', '')).strip(),
-                        "Buy Price": float(row.get('buy_price', 0)),
-                        "Quantity": float(row.get('quantity', 0))
+                        "Ticker": ticker,
+                        "Buy Price": buy_price,
+                        "Quantity": quantity
                     })
                 except Exception as row_error:
                     logger.error(f"Error processing row: {row_error}, Row data: {row}")
+                    import traceback
+                    logger.error(traceback.format_exc())
             
-            logger.info(f"Successfully loaded {len(portfolio)} positions from Supabase")
+            logger.info(f"✅ Successfully loaded {len(portfolio)} positions from Supabase")
+            logger.info(f"Portfolio tickers: {[p['Ticker'] for p in portfolio]}")
             return portfolio
         else:
-            logger.warning("No portfolio data found in Supabase (table exists but is empty)")
+            logger.warning("⚠️ No portfolio data found in Supabase (table exists but is empty)")
+            logger.warning("💡 Make sure you've added positions in the Streamlit app")
             return []
             
     except Exception as e:
