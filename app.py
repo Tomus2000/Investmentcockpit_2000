@@ -1202,9 +1202,28 @@ with tab2:
     # Filter for Investment Proposal tab only
     min_score = st.sidebar.slider("Minimum Investment Score", 1, 100, 1, key="min_score_filter")
     
-    # === AI Stock Recommendations (based on current portfolio) ===
+    # === AI Stock Recommendations (based on current portfolio) - AT THE TOP ===
     if not portfolio_input.empty:
-        st.markdown("---")
+        # Get portfolio data for recommendations
+        current_px = fetch_current_prices(portfolio_input["Ticker"].unique().tolist())
+        port = portfolio_input.merge(current_px.rename_axis("Ticker").reset_index(), on="Ticker", how="left")
+        port["Cost Basis"] = port["Buy Price"] * port["Quantity"]
+        port["Market Value"] = port["Current Price"] * port["Quantity"]
+        port["P/L"] = port["Market Value"] - port["Cost Basis"]
+        port["P/L %"] = np.where(port["Cost Basis"]>0, port["P/L"]/port["Cost Basis"]*100, np.nan)
+        
+        mv_sum = port["Market Value"].sum()
+        port["Weight %"] = np.where(mv_sum>0, port["Market Value"]/mv_sum*100, 0.0)
+        
+        totals = {
+            "Total Cost Basis": float(port["Cost Basis"].sum()),
+            "Total Market Value": float(port["Market Value"].sum()),
+            "Total P/L": float(port["P/L"].sum()),
+            "Total P/L %": float(
+                (port["Market Value"].sum() - port["Cost Basis"].sum())/port["Cost Basis"].sum()*100
+            ) if port["Cost Basis"].sum()>0 else np.nan
+        }
+        
         st.markdown("### 🚀 AI Stock Recommendations")
         
         # Refresh button for AI recommendations
@@ -1402,155 +1421,6 @@ with tab2:
                 st.metric("🏢 Sector Diversity", f"{sectors} sectors")
         
         st.markdown("---")
-    
-    # === Investment Strategy Generator ===
-    
-    # Investment amount input
-    col_amount, col_risk = st.columns(2)
-    
-    with col_amount:
-        investment_amount = st.number_input(
-            "💰 Investment Amount (USD)", 
-            min_value=1000, 
-            value=50000, 
-            step=1000,
-            help="Enter how much you want to invest"
-        )
-    
-    with col_risk:
-        risk_tolerance = st.selectbox(
-            "⚠️ Risk Tolerance",
-            options=["Conservative", "Moderate", "Aggressive", "Very Aggressive"],
-            index=1,
-            help="Select your comfort level with investment risk"
-        )
-    
-    # Investment categories
-    st.subheader("📊 Investment Categories")
-    category_cols = st.columns(3)
-    
-    with category_cols[0]:
-        us_stocks = st.checkbox("🇺🇸 US Stocks", value=True)
-        large_cap = st.checkbox("💼 Large Cap", value=True)
-        growth = st.checkbox("📈 Growth", value=True)
-    
-    with category_cols[1]:
-        international = st.checkbox("🌍 International", value=False)
-        bonds = st.checkbox("📊 Bonds/Fixed Income", value=False)
-        etfs = st.checkbox("📦 ETFs", value=True)
-    
-    with category_cols[2]:
-        tech = st.checkbox("💻 Technology", value=True)
-        real_estate = st.checkbox("🏠 Real Estate (REITs)", value=False)
-        commodities = st.checkbox("🏭 Commodities", value=False)
-    
-    # Time horizon and goals
-    st.subheader("🎯 Investment Goals")
-    time_horizon = st.selectbox(
-        "⏱️ Time Horizon",
-        options=["Short-term (1-3 years)", "Medium-term (3-7 years)", "Long-term (7+ years)"],
-        index=2
-    )
-    
-    primary_goal = st.radio(
-        "Primary Investment Goal",
-        options=["Capital Preservation", "Income Generation", "Capital Growth", "Balanced"],
-        index=2,
-        horizontal=True
-    )
-    
-    # Generate strategy button
-    if st.button("🚀 Generate AI Investment Strategy", type="primary", use_container_width=True):
-        with st.spinner("🤖 AI is crafting your personalized investment strategy..."):
-            
-            # Build category string
-            selected_categories = []
-            if us_stocks: selected_categories.append("US Stocks")
-            if large_cap: selected_categories.append("Large Cap")
-            if growth: selected_categories.append("Growth")
-            if international: selected_categories.append("International")
-            if bonds: selected_categories.append("Bonds/Fixed Income")
-            if etfs: selected_categories.append("ETFs")
-            if tech: selected_categories.append("Technology")
-            if real_estate: selected_categories.append("Real Estate/REITs")
-            if commodities: selected_categories.append("Commodities")
-            
-            # Prepare AI prompt
-            strategy_prompt = f"""
-            Investment Strategy Request:
-            
-            Investment Amount: ${investment_amount:,.0f}
-            Risk Tolerance: {risk_tolerance}
-            Time Horizon: {time_horizon}
-            Primary Goal: {primary_goal}
-            Selected Categories: {', '.join(selected_categories)}
-            
-            Create a comprehensive, personalized investment strategy with the following structure:
-            
-            ## 💡 INVESTMENT OVERVIEW
-            Brief 2-3 sentence summary of the recommended approach.
-            
-            ## 🎯 RECOMMENDED INVESTMENTS (Top 10-15 Holdings)
-            For each holding, provide:
-            1. Ticker Symbol
-            2. Name
-            3. Allocation %
-            4. Rationale (why this investment fits the strategy)
-            
-            Format each recommendation: **Ticker:** [TICKER] | **Name:** [Name] | **Allocation:** [X]% | **Rationale:** [Brief reason]
-            
-            Focus on quality investments that match the risk tolerance and categories selected.
-            Provide actionable, specific recommendations. Use current market conditions (2024). Maximum 800 words.
-            """
-            
-            # Call OpenAI API
-            try:
-                headers = {
-                    "Authorization": f"Bearer {active_openai_key}",
-                    "Content-Type": "application/json"
-                }
-                
-                data = {
-                    "model": "gpt-4",
-                    "messages": [
-                        {"role": "system", "content": "You are a certified financial planner and investment advisor with 25+ years of experience. You specialize in portfolio construction, asset allocation, and personalized investment strategies. Provide detailed, actionable investment recommendations with specific percentages and ticker symbols."},
-                        {"role": "user", "content": strategy_prompt}
-                    ],
-                    "max_tokens": 2500,
-                    "temperature": 0.3
-                }
-                
-                response = requests.post(
-                    "https://api.openai.com/v1/chat/completions",
-                    headers=headers,
-                    json=data,
-                    timeout=90
-                )
-                
-                if response.status_code == 200:
-                    result = response.json()
-                    ai_strategy = result['choices'][0]['message']['content']
-                    
-                    # Display the strategy
-                    st.markdown("### 🎉 Your Personalized Investment Strategy")
-                    st.markdown(ai_strategy)
-                    
-                    # Add download button
-                    @st.cache_data
-                    def _strategy_csv(text):
-                        return text.encode("utf-8")
-                    
-                    st.download_button(
-                        "⬇️ Download Strategy as Text",
-                        data=_strategy_csv(ai_strategy),
-                        file_name=f"investment_strategy_{datetime.now().strftime('%Y%m%d')}.txt",
-                        mime="text/plain"
-                    )
-                else:
-                    st.error(f"API Error: {response.status_code}")
-                    
-            except Exception as e:
-                st.error(f"Error generating strategy: {str(e)}")
     
     # === AI-Selected Stock Analysis Table (Enhanced Screener) ===
     if not portfolio_input.empty:
