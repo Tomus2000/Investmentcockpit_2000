@@ -454,16 +454,10 @@ if not user_openai_key:
     st.sidebar.info("ℹ️ Using default API key")
 
 # -------------------------------------------------------
-# Stock selection (UNCHANGED)
+# Filters for Investment Proposal tab only
 # -------------------------------------------------------
-st.sidebar.header("⚙️ Stock Selection")
-tickers_input = st.sidebar.text_input(
-    "Enter tickers (comma-separated)",
-    value="AXON, CELH, DUOL, INTA, IOT, APP, ENPH, ON, DT, GLOB"
-)
-
-st.sidebar.subheader("🔍 Filters")
-min_score = st.sidebar.slider("Minimum Investment Score", 1, 100, 1)
+# Note: min_score is only used in tab2 (Investment Proposal)
+# It will be defined inside tab2 context
 
 # -------------------------------------------------------
 # === Portfolio input & overview (NEW UI) ===
@@ -1665,6 +1659,9 @@ if not portfolio_input.empty and not df.empty:
 with tab2:
     st.header("📋 Investment Proposal")
     st.markdown("Create a personalized investment strategy tailored to your goals and risk profile")
+    
+    # Filter for Investment Proposal tab only
+    min_score = st.sidebar.slider("Minimum Investment Score", 1, 100, 1, key="min_score_filter")
     
     # Investment amount input
     col_amount, col_risk = st.columns(2)

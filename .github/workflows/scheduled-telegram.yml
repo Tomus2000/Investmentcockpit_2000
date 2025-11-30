@@ -1,0 +1,41 @@
+name: Scheduled Telegram Messages
+
+on:
+  schedule:
+    # Run at 9:00 AM Lisbon time (UTC+0 in winter, UTC+1 in summer)
+    # Lisbon is UTC+0 in winter, so 9:00 AM = 09:00 UTC
+    # Lisbon is UTC+1 in summer, so 9:00 AM = 08:00 UTC
+    # Using 08:00 UTC for summer (9 AM Lisbon) and 09:00 UTC for winter (9 AM Lisbon)
+    # We'll use 08:00 UTC which is 9 AM in summer and 8 AM in winter (close enough)
+    - cron: '0 8 * * *'  # 8:00 AM UTC = 9:00 AM Lisbon (summer) or 8:00 AM Lisbon (winter)
+    # Run at 9:30 AM Lisbon time  
+    - cron: '30 8 * * *'  # 8:30 AM UTC = 9:30 AM Lisbon (summer) or 8:30 AM Lisbon (winter)
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  send-messages:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements_bot.txt
+      
+      - name: Send Telegram Messages
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_USER_ID: ${{ secrets.TELEGRAM_USER_ID }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          python test_bot_now.py
+
