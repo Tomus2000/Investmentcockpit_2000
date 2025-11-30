@@ -935,6 +935,9 @@ def get_ai_stock_recommendations_internal(portfolio_data, totals):
 # -------------------------------------------------------
 # AI-Selected Stock Analysis Table (Enhanced Screener)
 # -------------------------------------------------------
+# Default min_score (will be overridden by slider in tab2)
+min_score = 1
+
 st.header("📊 AI-Selected Stock Analysis")
 
 def get_ai_selected_stocks_internal(portfolio_data, totals):
